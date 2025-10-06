@@ -85,7 +85,7 @@ void drawLine(float x1, float y1, float x2, float y2){
 			} else if (offset < 0){
 				offset += LCD_PIXELS;
 			}
-			*(p + offset) = getColourFromShade(63);
+			*(p + offset) = colour_white;
 			y += m;
 		}
 	} else{
@@ -106,7 +106,7 @@ void drawLine(float x1, float y1, float x2, float y2){
 			} else if (offset < 0){
 				offset += LCD_PIXELS;
 			}
-			*(p + offset) = getColourFromShade(63);
+			*(p + offset) = colour_white;
 			x += m;
 		}
 	}
@@ -120,6 +120,14 @@ float fsin(float x) {
 
 float fcos(float x) {
    return fsin(x + (PI / 2));
+}
+
+float fsqrt(float x){
+	float guess = 1;
+	while (fabs(guess*guess - x) > 0.1){
+		guess = ((x/guess) + guess)/2;
+	}
+	return guess;
 }
 
 float fwrap(float x){
@@ -179,10 +187,11 @@ int main(void) {
 	object *entity2;
 	
 	const float playerRotSpeed = 6;
-	const float	playerAccl = 200;
+	const float	playerAccl = 150;
+	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
-	const float asteroidSplitCos = 1;
-	const float asteroidSplitSin = 0.2;
+	const float asteroidSplitCos = 1.3;
+	const float asteroidSplitSin = 0.4;
 	const float asteroidSplitVRot = 1.2;
 	
 	
@@ -191,12 +200,17 @@ int main(void) {
 	createObject(20,100,-30,0,0,0.8,&smallAsteroidShape,smallAsteroidID,0);
 	createObject(20,150,-20,0,0,-0.5,&mediumAsteroidShape,mediumAsteroidID,0);
 	createObject(20,200,-10,0,0,0.4,&largeAsteroidShape,largeAsteroidID,0);	
+	
+	//for (i=0;i<30;i++){
+	//	createObject(20+5*i,20+5*i,0,0,0,0.4,&largeAsteroidShape,largeAsteroidID,0);	
+	//}
+	
     
 	
     
 
     while (1) {
-		Bdisp_EnableColor(1);
+		Bdisp_EnableColor(0);
 		
 		keyupdate();
 		
@@ -247,6 +261,12 @@ int main(void) {
 				if (keydownlast(36)){
 					entity->vx += cosCr*deltaT*playerAccl;
 					entity->vy -= sinCr*deltaT*playerAccl;
+					x1 = fsqrt(entity->vx*entity->vx + entity->vy*entity->vy);
+					if (x1>playerMaxSpeed){
+						x1 = playerMaxSpeed/x1;
+						entity->vx = entity->vx * x1;
+						entity->vy = entity->vy * x1;
+					}
 				}
 				if (keydownlast(26) && !keydownhold(26)){
 					createObject(
@@ -296,6 +316,16 @@ int main(void) {
 						if (entity2->ID >= smallAsteroidID && fabs(entity2->x-entity->x)<x1 && fabs(entity2->y-entity->y)<x1){
 							entity->alive = 0;
 							entity2->alive = 0;
+							break;
+						}
+					}
+					break;
+				case playerID:
+					for (j=1; j<numEntities; j++){
+						entity2 = entities[j];
+						x1 = sizes[entity->ID]+sizes[entity2->ID];
+						if (entity2->ID >= smallAsteroidID && fabs(entity2->x-entity->x)<x1 && fabs(entity2->y-entity->y)<x1){
+							entity->alive = 0;
 							break;
 						}
 					}
