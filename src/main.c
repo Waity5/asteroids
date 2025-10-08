@@ -28,6 +28,13 @@ clock_t t2 = 0;
 float deltaT = 0.02;
 float deltaTOld;
 
+unsigned int seed = 123456789;
+
+unsigned short shortrand()
+{
+  seed = (1103515245 * seed + 12345);
+  return seed>>16;
+}
 
 
 void keyupdate(void) {
@@ -180,6 +187,25 @@ void drawStaticShape(float x, float y, const float (*shape)[][2], unsigned char 
 	}
 }
 
+void summonAsteroids(char count, float maxSpeed){
+	float x,y,vx,vy,rot,vrot;
+	char i;
+	for (i = 0; i < count; i++){
+		if (shortrand()&1){
+			x = shortrand()%LCD_WIDTH_PX;
+			y = 0;
+		} else {
+			x = 0;
+			y = shortrand()%LCD_HEIGHT_PX;
+		}
+		vx = (((float)shortrand() / 32768.0)-1)*maxSpeed;
+		vy = (((float)shortrand() / 32768.0)-1)*maxSpeed;
+		rot = ((float)shortrand() / 32768.0)*3.14;
+		vrot = (((float)shortrand() / 32768.0)-1)*0.7;
+		createObject(x,y,vx,vy,rot,vrot,&largeAsteroidShape,largeAsteroidID,0);	
+	}
+}
+
 int main(void) {
 	int key;
 	p = GetVRAMAddress();
@@ -202,17 +228,20 @@ int main(void) {
 	const float	playerAccl = 150;
 	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
-	const float asteroidSplitCos = 1.3;
-	const float asteroidSplitSin = 0.4;
+	const float asteroidSplitCos = 1.8;
+	const float asteroidSplitSin = 0.8;
 	const float asteroidSplitVRot = 1.2;
 	
 	const float playerDeathTimerMax = 3;
 	
 	
 	createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
-	createObject(20,100,-30,0,0,0.8,&smallAsteroidShape,smallAsteroidID,0);
-	createObject(20,150,-20,0,0,-0.5,&mediumAsteroidShape,mediumAsteroidID,0);
-	createObject(20,200,-10,0,0,0.4,&largeAsteroidShape,largeAsteroidID,0);	
+	//createObject(20,100,-30,0,0,0.8,&smallAsteroidShape,smallAsteroidID,0);
+	//createObject(20,150,-20,0,0,-0.5,&mediumAsteroidShape,mediumAsteroidID,0);
+	
+	summonAsteroids(4,20);
+	
+	
 	
 	//for (i=0;i<30;i++){
 	//	createObject(20+5*i,20+5*i,0,0,0,0.4,&largeAsteroidShape,largeAsteroidID,0);	
