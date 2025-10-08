@@ -218,19 +218,25 @@ int main(void) {
 	float x1, y1, x2, y2;
 	unsigned char length;
 	char trails = 1;
-	unsigned char lives = 3;
+	unsigned char playerLives = 3;
 	unsigned char playerAlive = 1;
 	float playerDeathTimer = 0;
+	unsigned char asteroidCount = 0;
 	object *entity;
 	object *entity2;
 	
 	const float playerRotSpeed = 6;
 	const float	playerAccl = 150;
+	const float playerDrag = 10;
 	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
 	const float asteroidSplitCos = 1.8;
 	const float asteroidSplitSin = 0.8;
 	const float asteroidSplitVRot = 1.2;
+
+	char asteroidSpawnCount = 4;
+	float asteroidSpawnSpeed = 20;
+	float asteroidSpawnSpeedIncrease = 4;
 	
 	const float playerDeathTimerMax = 3;
 	
@@ -239,7 +245,7 @@ int main(void) {
 	//createObject(20,100,-30,0,0,0.8,&smallAsteroidShape,smallAsteroidID,0);
 	//createObject(20,150,-20,0,0,-0.5,&mediumAsteroidShape,mediumAsteroidID,0);
 	
-	summonAsteroids(4,20);
+	
 	
 	
 	
@@ -296,7 +302,7 @@ int main(void) {
 		}
 		deltaT = deltaT*0.2 + deltaTOld*0.8;
 		
-		if (!playerAlive){
+		if (!playerAlive && playerLives){
 			if (playerDeathTimer>0){
 				playerDeathTimer -= deltaT;
 			} else {
@@ -304,12 +310,20 @@ int main(void) {
 				playerAlive = 1;
 			}
 		}
+
+		if (!asteroidCount){
+			summonAsteroids(asteroidSpawnCount,asteroidSpawnSpeed);
+			asteroidSpawnSpeed += asteroidSpawnSpeedIncrease;
+			asteroidSpawnCount = 6;
+		}
 		
 		
 		//drawLine(25.0, 25.0, 350.0, 180.0);
 		//drawLine(350.0, 25.0, 25.0, 180.0);
 		//drawLine(100.0, 25.0, 150.0, 180.0);
 		//drawLine(150.0, 25.0, 120.0, 180.0);
+
+		asteroidCount = 0;
 		
 		for (i=numEntities-1; i>=0; i--){
 			entity = entities[i];
@@ -323,6 +337,10 @@ int main(void) {
 					entity->rot -= deltaT*playerRotSpeed;
 				}
 			}
+
+			if (entity->ID == smallAsteroidID || entity->ID == mediumAsteroidID || entity->ID == largeAsteroidID){
+				asteroidCount++;
+			}
 			
 			
 			entity->rot += entity->vrot * deltaT;
@@ -334,12 +352,20 @@ int main(void) {
 				if (keydownlast(36)){
 					entity->vx += cosCr*deltaT*playerAccl;
 					entity->vy -= sinCr*deltaT*playerAccl;
-					x1 = fsqrt(entity->vx*entity->vx + entity->vy*entity->vy);
+				}
+				x1 = fsqrt(entity->vx*entity->vx + entity->vy*entity->vy);
+				if (x1>0.0) {
 					if (x1>playerMaxSpeed){
-						x1 = playerMaxSpeed/x1;
-						entity->vx = entity->vx * x1;
-						entity->vy = entity->vy * x1;
+						x2 = playerMaxSpeed; //cap speed
+					} else {
+						x2 = x1 - playerDrag*deltaT; //reduce speed
+						if (x2 < 0.0){
+							x2 = 0;
+						}
 					}
+					x2 = x2/x1;
+					entity->vx = entity->vx * x2;
+					entity->vy = entity->vy * x2;
 				}
 				if (keydownlast(26) && !keydownhold(26)){
 					createObject(
@@ -384,7 +410,7 @@ int main(void) {
 			for (j=0; j<numEntities; j++){
 				entity2 = entities[j];
 				x1 = sizes[entity->ID]+sizes[entity2->ID];
-				if (collisionTable[entity->ID][entity2->ID] && fabs(entity2->x - entity->x)<x1 && fabs(entity2->y - entity->y)<x1){
+				if (collisionTable[entity->ID][entity2->ID] && fabs(entity2->x - entity->x)<x1 && fabs(entity2->y - entity->y)<x1 && entity2->alive){
 					entity->alive = 0;
 					entity2->alive = 0;
 					break;
@@ -454,16 +480,16 @@ int main(void) {
 					break;
 				case playerID:
 					playerAlive = 0;
-					if (lives>0){
+					if (playerLives>0){
 						playerDeathTimer = playerDeathTimerMax;
-						lives -= 1;
+						playerLives -= 1;
 					}
 					break;
 				}
 				deleteEntity(i);
 			}
 		}
-		for (i=0; i<lives; i++){
+		for (i=0; i<playerLives; i++){
 			drawStaticShape(i*10+5.5,50.2,&iconPlayerShape,4);
 		}
 		
