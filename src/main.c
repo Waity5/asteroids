@@ -24,6 +24,7 @@ const float SECS_PER_CLOCK_FLOAT = 1.0 / (float)CLOCKS_PER_SEC;
 
 unsigned char playerBulletCount = 0;
 unsigned char asteroidCount = 0;
+unsigned char saucerCount = 0;
 
 //const char maxEntities = 64;
 unsigned char numEntities = 0;
@@ -246,27 +247,32 @@ int main(void) {
 	float x1, y1, x2, y2;
 	unsigned char length;
 	unsigned char trails = 1;
-	const unsigned char playerSpawnRadius = 25;
-	unsigned char playerLives = 3;
-	unsigned char playerAlive = 1;
 	float playerDeathTimer = 0;
 	object *entity;
 	object *entity2;
 	
+	unsigned int playerScore = 0;
+	const unsigned char playerSpawnRadius = 25;
+	unsigned char playerLives = 3;
+	unsigned char playerAlive = 1;
 	const float playerRotSpeed = 6;
 	const float	playerAccl = 150;
 	const float playerDrag = 5;
 	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
-	const float asteroidSplitVRot = 1.2;
+	const float playerDeathTimerMax = 3;
 
 	char asteroidSpawnCount = 4;
+	const unsigned char smallAsteroidScore = 100;
+	const unsigned char mediumAsteroidScore = 50;
+	const unsigned char largeAsteroidScore = 20;
 	float asteroidSpawnSpeed = 20;
 	const float asteroidSpawnSpeedIncrease = 2;
 	const float asteroidSlipForwardMult = 1.2/shortrandMax;
 	const float asteroidSlipSidewaysMult = 1.5/shortrandMax;
+	const float asteroidSplitVRot = 1.2;
 	
-	const float playerDeathTimerMax = 3;
+	
 	
 	
 	createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
@@ -426,6 +432,7 @@ int main(void) {
 				switch (entity->ID){
 					case playerBulletID:
 						entity->alive = 0;
+						entity->killer = playerID;
 						break;
 				}
 			}
@@ -445,13 +452,17 @@ int main(void) {
 				entity->y += LCD_HEIGHT_PX;
 			}
 			
-			for (j=0; j<numEntities; j++){
-				entity2 = entities[j];
-				x1 = sizes[entity->ID]+sizes[entity2->ID];
-				if (collisionTable[entity->ID][entity2->ID] && fabs(entity2->x - entity->x)<x1 && fabs(entity2->y - entity->y)<x1 && entity2->alive){
-					entity->alive = 0;
-					entity2->alive = 0;
-					break;
+			if (entity -> alive){
+				for (j=0; j<numEntities; j++){
+					entity2 = entities[j];
+					x1 = sizes[entity->ID]+sizes[entity2->ID];
+					if (collisionTable[entity->ID][entity2->ID] && fabs(entity2->x - entity->x)<x1 && fabs(entity2->y - entity->y)<x1 && entity2->alive){
+						entity->alive = 0;
+						entity->killer = entity2->ID;
+						entity2->alive = 0;
+						entity2->killer = entity->ID;
+						break;
+					}
 				}
 			}
 			
@@ -468,7 +479,15 @@ int main(void) {
 			
 			if (!entity->alive){
 				switch (entity->ID){
+				case smallAsteroidID:
+					if (entity->killer == playerBulletID){
+						playerScore += smallAsteroidScore;
+					}
+					break;
 				case mediumAsteroidID:
+					if (entity->killer == playerBulletID){
+						playerScore += mediumAsteroidScore;
+					}
 					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
 					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
@@ -497,6 +516,9 @@ int main(void) {
 					);
 					break;
 				case largeAsteroidID:
+					if (entity->killer == playerBulletID){
+						playerScore += largeAsteroidScore;
+					}
 					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
 					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
@@ -540,9 +562,9 @@ int main(void) {
 		}
 		
 		
-		for (i = 0; i<(int)(deltaT*1000.0); i++){
-			drawLine((i/5)*15,(i%5)*5+2,10+(i/5)*15,(i%5)*5+2);	
-		}
+		//for (i = 0; i<(int)(deltaT*1000.0); i++){
+		//	drawLine((i/5)*15,(i%5)*5+2,10+(i/5)*15,(i%5)*5+2);	
+		//}
 		//drawLine(0,10,deltaT*15.0*((float)LCD_WIDTH_PX),10);
 		
         
