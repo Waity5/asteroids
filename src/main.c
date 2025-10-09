@@ -8,6 +8,8 @@
 
 
 #define maxEntities 128
+#define shortrandMax 65536.0
+#define shortrandMean 32768.0
 
 const unsigned short* keyboard_register = (unsigned short*)0xA44B0000;
 unsigned short lastkey[8];
@@ -18,6 +20,10 @@ const float PI = 3.14159265358979323846264338327950288419716939937510582097;
 const float TAU = PI*2.0;
 int tick;
 const float SECS_PER_CLOCK_FLOAT = 1.0 / (float)CLOCKS_PER_SEC;
+
+
+unsigned char playerBulletCount = 0;
+unsigned char asteroidCount = 0;
 
 //const char maxEntities = 64;
 unsigned char numEntities = 0;
@@ -142,11 +148,20 @@ float fwrap(float x){
 
 void deleteEntity(int index){
 	int i;
+	unsigned char ID = entities[index]->ID;
+	if (ID == smallAsteroidID || ID == mediumAsteroidID || ID == largeAsteroidID){
+		asteroidCount--;
+	}
+	if (ID == playerBulletID){
+		playerBulletCount--;
+	}
 	numEntities--;
 	free(entities[index]);
 	for (i=index; i<numEntities; i++){
 		entities[i] = entities[i+1];
 	}
+	
+	
 }
 
 void createObject(float x, float y, float vx, float vy, float rot, float vrot, const float (*shape)[][2], unsigned char ID, float timer){
@@ -169,6 +184,13 @@ void createObject(float x, float y, float vx, float vy, float rot, float vrot, c
 			entities[numEntities] = newObject;
 			
 			numEntities++;
+			
+			if (ID == smallAsteroidID || ID == mediumAsteroidID || ID == largeAsteroidID){
+				asteroidCount++;
+			}
+			if (ID == playerBulletID){
+				playerBulletCount++;
+			}
 		}
 	}
 }
@@ -187,7 +209,7 @@ void drawStaticShape(float x, float y, const float (*shape)[][2], unsigned char 
 	}
 }
 
-void summonAsteroids(char count, float maxSpeed){
+void summonAsteroids(char count, float meanSpeed){
 	float x,y,vx,vy,rot,vrot;
 	char i;
 	for (i = 0; i < count; i++){
@@ -198,10 +220,16 @@ void summonAsteroids(char count, float maxSpeed){
 			x = 0;
 			y = shortrand()%LCD_HEIGHT_PX;
 		}
-		vx = (((float)shortrand() / 32768.0)-1)*maxSpeed;
-		vy = (((float)shortrand() / 32768.0)-1)*maxSpeed;
-		rot = ((float)shortrand() / 32768.0)*3.14;
-		vrot = (((float)shortrand() / 32768.0)-1)*0.7;
+		vx = (((float)shortrand() + (float)shortrand()) / shortrandMax)*meanSpeed;
+		if (shortrand()+shortrand()>shortrandMax){
+			vx = -vx;
+		}
+		vy = (((float)shortrand() + (float)shortrand()) / shortrandMax)*meanSpeed;
+		if (shortrand()+shortrand()>shortrandMax){
+			vy = -vy;
+		}
+		rot = ((float)shortrand() / shortrandMean)*3.14;
+		vrot = (((float)shortrand() / shortrandMean)-1)*0.7;
 		createObject(x,y,vx,vy,rot,vrot,&largeAsteroidShape,largeAsteroidID,0);	
 	}
 }
@@ -217,26 +245,26 @@ int main(void) {
 	float cosCr;
 	float x1, y1, x2, y2;
 	unsigned char length;
-	char trails = 1;
+	unsigned char trails = 1;
+	const unsigned char playerSpawnRadius = 25;
 	unsigned char playerLives = 3;
 	unsigned char playerAlive = 1;
 	float playerDeathTimer = 0;
-	unsigned char asteroidCount = 0;
 	object *entity;
 	object *entity2;
 	
 	const float playerRotSpeed = 6;
 	const float	playerAccl = 150;
-	const float playerDrag = 10;
+	const float playerDrag = 5;
 	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
-	const float asteroidSplitCos = 1.8;
-	const float asteroidSplitSin = 0.8;
 	const float asteroidSplitVRot = 1.2;
 
 	char asteroidSpawnCount = 4;
 	float asteroidSpawnSpeed = 20;
-	float asteroidSpawnSpeedIncrease = 4;
+	const float asteroidSpawnSpeedIncrease = 2;
+	const float asteroidSlipForwardMult = 1.2/shortrandMax;
+	const float asteroidSlipSidewaysMult = 1.5/shortrandMax;
 	
 	const float playerDeathTimerMax = 3;
 	
@@ -267,6 +295,8 @@ int main(void) {
 		Bdisp_EnableColor(1);
 		
 		keyupdate();
+		
+		shortrand(); // makes the results more random
 		
 		if (keydownlast(KEY_PRGM_MENU)) {
 			GetKey(&key);
@@ -306,8 +336,19 @@ int main(void) {
 			if (playerDeathTimer>0){
 				playerDeathTimer -= deltaT;
 			} else {
-				createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
-				playerAlive = 1;
+				x1 = 1;
+				
+				for (i = 0; i<numEntities; i++){
+					entity2 = entities[i];
+					x2 = playerSpawnRadius+sizes[entity2->ID];
+					if (fabs(entity2->x - LCD_WIDTH_PX/2)<x2 && fabs(entity2->y - LCD_HEIGHT_PX/2)<x2){
+						x1 = 0;
+					}
+				}
+				if (x1){
+					createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+					playerAlive = 1;
+				}
 			}
 		}
 
@@ -323,7 +364,6 @@ int main(void) {
 		//drawLine(100.0, 25.0, 150.0, 180.0);
 		//drawLine(150.0, 25.0, 120.0, 180.0);
 
-		asteroidCount = 0;
 		
 		for (i=numEntities-1; i>=0; i--){
 			entity = entities[i];
@@ -338,9 +378,7 @@ int main(void) {
 				}
 			}
 
-			if (entity->ID == smallAsteroidID || entity->ID == mediumAsteroidID || entity->ID == largeAsteroidID){
-				asteroidCount++;
-			}
+			
 			
 			
 			entity->rot += entity->vrot * deltaT;
@@ -367,7 +405,7 @@ int main(void) {
 					entity->vx = entity->vx * x2;
 					entity->vy = entity->vy * x2;
 				}
-				if (keydownlast(26) && !keydownhold(26)){
+				if (keydownlast(26) && !keydownhold(26) && playerBulletCount<4){
 					createObject(
 						entity->x,
 						entity->y,
@@ -431,22 +469,26 @@ int main(void) {
 			if (!entity->alive){
 				switch (entity->ID){
 				case mediumAsteroidID:
+					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
+					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * asteroidSplitCos + entity->vy * asteroidSplitSin,
-						entity->vy * asteroidSplitCos - entity->vx * asteroidSplitSin,
+						entity->vx * cosCr + entity->vy * sinCr,
+						entity->vy * cosCr - entity->vx * sinCr,
 						entity->rot + 0.5,
 						entity->vrot * -asteroidSplitVRot,
 						&smallAsteroidShape,
 						smallAsteroidID,
 						0.0
 					);
+					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
+					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * asteroidSplitCos - entity->vy * asteroidSplitSin,
-						entity->vy * asteroidSplitCos + entity->vx * asteroidSplitSin,
+						entity->vx * cosCr - entity->vy * sinCr,
+						entity->vy * cosCr + entity->vx * sinCr,
 						-entity->rot - 1.7,
 						entity->vrot * asteroidSplitVRot,
 						&smallAsteroidShape,
@@ -455,22 +497,26 @@ int main(void) {
 					);
 					break;
 				case largeAsteroidID:
+					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
+					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * asteroidSplitCos + entity->vy * asteroidSplitSin,
-						entity->vy * asteroidSplitCos - entity->vx * asteroidSplitSin,
+						entity->vx * cosCr + entity->vy * sinCr,
+						entity->vy * cosCr - entity->vx * sinCr,
 						entity->rot + 1.5,
 						entity->vrot * -asteroidSplitVRot,
 						&mediumAsteroidShape,
 						mediumAsteroidID,
 						0.0
 					);
+					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
+					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * asteroidSplitCos - entity->vy * asteroidSplitSin,
-						entity->vy * asteroidSplitCos + entity->vx * asteroidSplitSin,
+						entity->vx * cosCr - entity->vy * sinCr,
+						entity->vy * cosCr + entity->vx * sinCr,
 						-entity->rot - 0.4,
 						entity->vrot * asteroidSplitVRot,
 						&mediumAsteroidShape,
