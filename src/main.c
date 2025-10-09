@@ -86,7 +86,7 @@ void drawLine(float x1, float y1, float x2, float y2){
 		}
 		m = (y2-y1)/(x2-x1);
 		y = y1;
-		for (x=x1; x < x2; x++){
+		for (x=x1; x <= x2; x++){
 			offset = ((int)x) + ((int)y)*LCD_WIDTH_PX;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
@@ -107,7 +107,7 @@ void drawLine(float x1, float y1, float x2, float y2){
 		}
 		m = (x2-x1)/(y2-y1);
 		x = x1;
-		for (y=y1; y < y2; y++){
+		for (y=y1; y <= y2; y++){
 			offset = ((int)x) + ((int)y)*LCD_WIDTH_PX;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
@@ -196,17 +196,10 @@ void createObject(float x, float y, float vx, float vy, float rot, float vrot, c
 	}
 }
 
-void drawStaticShape(float x, float y, const float (*shape)[][2], unsigned char length){
-	float x1,y1,x2,y2;
+void drawStaticShape(float x, float y, const float (*shape)[][4], unsigned char length){
 	unsigned char i;
-	x1 = (*shape)[length-1][0] + x;
-	y1 = (*shape)[length-1][1] + y;
 	for (i = 0; i<length; i++){
-		x2 = (*shape)[i][0] + x;
-		y2 = (*shape)[i][1] + y;
-		drawLine(x1,y1,x2,y2);
-		x1 = x2;
-		y1 = y2;
+		drawLine((*shape)[i][1] + x, (*shape)[i][0] + y, (*shape)[i][3] + x, (*shape)[i][2] + y);
 	}
 }
 
@@ -480,12 +473,12 @@ int main(void) {
 			if (!entity->alive){
 				switch (entity->ID){
 				case smallAsteroidID:
-					if (entity->killer == playerBulletID){
+					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += smallAsteroidScore;
 					}
 					break;
 				case mediumAsteroidID:
-					if (entity->killer == playerBulletID){
+					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += mediumAsteroidScore;
 					}
 					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
@@ -516,7 +509,7 @@ int main(void) {
 					);
 					break;
 				case largeAsteroidID:
-					if (entity->killer == playerBulletID){
+					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += largeAsteroidScore;
 					}
 					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
@@ -558,7 +551,24 @@ int main(void) {
 			}
 		}
 		for (i=0; i<playerLives; i++){
-			drawStaticShape(i*10+5.5,50.2,&iconPlayerShape,4);
+			drawStaticShape(i*10+5.5,32.2,&iconPlayerShape,4);
+		}
+		
+		i = 1;
+		while (playerScore/i){
+			i *= 10;
+		}
+		i /= 10;
+		if (i==0){
+			i = 1;
+		}
+		x1 = 6;
+		y1 = 10;
+		while (i){
+			j = (playerScore/i)%10;
+			drawStaticShape(x1,y1,iconNums[j],iconNumLengths[j]);
+			x1 += 16;
+			i /= 10;
 		}
 		
 		
