@@ -21,11 +21,11 @@ const float playerBulletShape[2][2] = {{5, 0},{-5, 0}};
 const float smallAsteroidShape[4][2] = {{5, 0},{0, 5},{-5,0},{0,-5}};
 const float mediumAsteroidShape[4][2] = {{8, 0},{0, 8},{-8,0},{0,-8}};
 const float largeAsteroidShape[4][2] = {{15, 0},{0, 15},{-15,0},{0,-15}};
-const float smallSaucerShape[6][2] = {{8, 0},{6, 2},{-6,2},{-8,0},{-6,-2},{6,-2}};
-const float largeSaucerShape[6][2] = {{12, 0},{9, 3},{-9,3},{-12,0},{-9,-3},{9,-3}};
-const float saucerBulletShape[2][2] = {{3,0},{-3,0}};
+const float smallSaucerShape[10][2] = {{6, 0},{4, 2},{-4,2},{-6,0},{-4,-2},{2,-2},{2,-6},{-2,-6},{-2,-2},{4,-2}};
+const float largeSaucerShape[10][2] = {{12, 0},{9, 3},{-9,3},{-12,0},{-9,-3},{6,-3},{6,-9},{-6,-9},{-6,-3},{9,-3}};
+const float saucerBulletShape[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
 
-const unsigned char lengths[entityCount] = {4,2,4,4,4,6,6,2};
+const unsigned char lengths[entityCount] = {4,2,4,4,4,10,10,4};
 const unsigned char sizes[entityCount] = {6,3,4,6,12,6,9,1};
 
 const float iconPlayerShape[4][4] = {{-8, 0, 8, -5},{8, -5, 2, 0},{2, 0, 8, 5},{8, 5, -8, 0}};

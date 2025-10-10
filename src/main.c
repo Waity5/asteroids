@@ -37,12 +37,11 @@ float deltaTOld;
 
 unsigned int seed = 123456789;
 
-unsigned short shortrand()
+unsigned short shortrand(void)
 {
   seed = (1103515245 * seed + 12345);
   return seed>>16;
 }
-
 
 void keyupdate(void) {
     memcpy(holdkey, lastkey, sizeof(unsigned short) * 8);
@@ -156,6 +155,9 @@ void deleteEntity(int index){
 	if (ID == playerBulletID){
 		playerBulletCount--;
 	}
+	if (ID == smallSaucerID || ID == largeSaucerID){
+		saucerCount--;
+	}
 	numEntities--;
 	free(entities[index]);
 	for (i=index; i<numEntities; i++){
@@ -191,6 +193,9 @@ void createObject(float x, float y, float vx, float vy, float rot, float vrot, c
 			}
 			if (ID == playerBulletID){
 				playerBulletCount++;
+			}
+			if (ID == smallSaucerID || ID == largeSaucerID){
+				saucerCount++;
 			}
 		}
 	}
@@ -253,9 +258,12 @@ int main(void) {
 	const float playerDrag = 5;
 	const float	playerMaxSpeed = 300;
 	const float playerBulletSpeed = 200;
+	const float playerBulletLifetime = 1;
 	const float playerDeathTimerMax = 3;
 
 	char asteroidSpawnCount = 4;
+	const float asteroidSpawnDelay = 3;
+	float asteroidSpanTimer = 0;
 	const unsigned char smallAsteroidScore = 100;
 	const unsigned char mediumAsteroidScore = 50;
 	const unsigned char largeAsteroidScore = 20;
@@ -264,6 +272,19 @@ int main(void) {
 	const float asteroidSlipForwardMult = 1.2/shortrandMax;
 	const float asteroidSlipSidewaysMult = 1.5/shortrandMax;
 	const float asteroidSplitVRot = 1.2;
+
+	const float saucerCheckDelay = 4;
+	float saucerCheckTimer = 4;
+	unsigned short saucerSpawnChance = shortrandMax/5;
+	unsigned short saucerSmallSpawnChance = shortrandMax/2;
+	const float saucerSpeed = 60;
+	const short smallSaucerScore = 990;
+	const short largeSaucerScore = 300;
+	const float saucerBulletInterval = 1;
+	float saucerBasePrecision = 0.5;
+	float saucerSmallPrecisionMult = 0.5;
+	const float saucerBulletSpeed = 200;
+	const float saucerBulletLifetime = 0.75;
 	
 	
 	
@@ -289,7 +310,7 @@ int main(void) {
 		p2++;
 	}
     
-
+	
     while (1) {
 		Bdisp_EnableColor(1);
 		
@@ -319,7 +340,6 @@ int main(void) {
 		if (keydownlast(72) && !keydownhold(72)){
 			trails = (trails+1)&0x1;
 		}
-		
 		
 		
 		deltaTOld = deltaT;
@@ -352,9 +372,46 @@ int main(void) {
 		}
 
 		if (!asteroidCount){
-			summonAsteroids(asteroidSpawnCount,asteroidSpawnSpeed);
-			asteroidSpawnSpeed += asteroidSpawnSpeedIncrease;
-			asteroidSpawnCount = 6;
+			if (asteroidSpanTimer > 0){
+				asteroidSpanTimer -= deltaT;
+			} else {
+				summonAsteroids(asteroidSpawnCount,asteroidSpawnSpeed);
+				asteroidSpawnSpeed += asteroidSpawnSpeedIncrease;
+				asteroidSpawnCount = 6;
+				asteroidSpanTimer += asteroidSpawnDelay;
+			}
+		}
+
+		if (!saucerCount){
+			if (saucerCheckTimer > 0){
+				saucerCheckTimer -= deltaT;
+			} else {
+				saucerCheckTimer += saucerCheckDelay;
+				if (shortrand() < saucerSpawnChance){
+					x1 = 0;
+					y1 = shortrand()%LCD_HEIGHT_PX;
+					if (shortrand()&1){
+						x2 = saucerSpeed;
+					} else {
+						x2 = -saucerSpeed;
+					}
+					y2 = 0;
+					if (playerScore > 30000){
+						j = 1;
+					} else {
+						if (shortrand() < saucerSmallSpawnChance){
+							j = 1;
+						} else {
+							j = 0;
+						}
+					}
+					if (j){
+						createObject(x1,y1,x2,y2,0,0,&smallSaucerShape,smallSaucerID,3);
+					} else {
+						createObject(x1,y1,x2,y2,0,0,&largeSaucerShape,largeSaucerID,3);
+					}
+				}
+			}
 		}
 		
 		
@@ -414,7 +471,7 @@ int main(void) {
 						0,
 						&playerBulletShape,
 						playerBulletID,
-						1.0
+						playerBulletLifetime
 					);
 				}
 			}
@@ -426,6 +483,35 @@ int main(void) {
 					case playerBulletID:
 						entity->alive = 0;
 						entity->killer = playerID;
+						break;
+					case smallSaucerID:
+					case largeSaucerID:
+						entity->timer += saucerBulletInterval;
+						if (playerAlive){
+							x1 = 0;
+							y1 = 0;
+							for (j=0; j<numEntities; j++){
+								entity2 = entities[j];
+								if (entity2->ID == playerID){
+									x1 = entity2->x - entity->x;
+									y1 = entity2->y - entity->y;
+								}
+							}
+							x2 = saucerBulletSpeed/fsqrt(x1*x1 + y1*y1);
+							x1 *= x2;
+							y1 *= x2;
+							x2 = (((float)shortrand() / shortrandMean)-1) * saucerBasePrecision;
+							if (entity->ID == smallSaucerID){
+								x2 *= saucerSmallPrecisionMult;
+							}
+							cosCr = fcos(x2);
+							sinCr = fsin(x2);
+							createObject(entity->x, entity->y, x1*cosCr+y1*sinCr, y1*cosCr+x1*sinCr, 0, 0, &saucerBulletShape, saucerBulletID, saucerBulletLifetime);
+						}
+						break;
+					case saucerBulletID:
+						entity->alive = 0;
+						entity->killer = smallSaucerID;
 						break;
 				}
 			}
@@ -472,6 +558,13 @@ int main(void) {
 			
 			if (!entity->alive){
 				switch (entity->ID){
+				case playerID:
+					playerAlive = 0;
+					if (playerLives>0){
+						playerDeathTimer = playerDeathTimerMax;
+						playerLives -= 1;
+					}
+					break;
 				case smallAsteroidID:
 					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += smallAsteroidScore;
@@ -539,11 +632,14 @@ int main(void) {
 						0.0
 					);
 					break;
-				case playerID:
-					playerAlive = 0;
-					if (playerLives>0){
-						playerDeathTimer = playerDeathTimerMax;
-						playerLives -= 1;
+				case smallSaucerID:
+					if (entity->killer == playerID || entity->killer == playerBulletID){
+						playerScore += smallSaucerScore;
+					}
+					break;
+				case largeSaucerID:
+					if (entity->killer == playerID || entity->killer == playerBulletID){
+						playerScore += largeSaucerScore;
 					}
 					break;
 				}
