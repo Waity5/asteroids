@@ -4,6 +4,7 @@
 #include <time.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include "main.h"
 
 
@@ -21,6 +22,7 @@ const float TAU = PI*2.0;
 int tick;
 const float SECS_PER_CLOCK_FLOAT = 1.0 / (float)CLOCKS_PER_SEC;
 
+const float characterSpacing = 16;
 
 unsigned char playerBulletCount = 0;
 unsigned char asteroidCount = 0;
@@ -233,6 +235,36 @@ void summonAsteroids(char count, float meanSpeed){
 	}
 }
 
+void drawText(float x, float y, char text[]){
+	int i;
+	for (i=0; i < strlen(text); i++){
+		if (text[i] >= 0x41){
+			drawStaticShape(x,y,iconLets[text[i]-0x41],iconLetLengths[text[i]-0x41]);
+		} else if (text[i] >= 0x30){
+			drawStaticShape(x,y,iconNums[text[i]-0x30],iconNumLengths[text[i]-0x30]);
+		}
+		x += characterSpacing;
+	}
+}
+
+void drawNumber(float x, float y, int number){
+	int i,j;
+	i = 1;
+	while (number/i){
+		i *= 10;
+	}
+	i /= 10;
+	if (i==0){
+		i = 1;
+	}
+	while (i){
+		j = (number/i)%10;
+		drawStaticShape(x,y,iconNums[j],iconNumLengths[j]);
+		x += characterSpacing;
+		i /= 10;
+	}
+}
+
 int main(void) {
 	int key;
 	p = GetVRAMAddress();
@@ -249,10 +281,12 @@ int main(void) {
 	object *entity;
 	object *entity2;
 	
-	unsigned int playerScore = 0;
+	int playerScore = 0;
+	int playerScoreOld = 0;
+	const int extraLifeInterval = 10000;
 	const unsigned char playerSpawnRadius = 25;
-	unsigned char playerLives = 3;
-	unsigned char playerAlive = 1;
+	unsigned char playerLives = 0;
+	unsigned char playerAlive = 0;
 	const float playerRotSpeed = 6;
 	const float	playerAccl = 150;
 	const float playerDrag = 5;
@@ -263,7 +297,7 @@ int main(void) {
 
 	char asteroidSpawnCount = 4;
 	const float asteroidSpawnDelay = 3;
-	float asteroidSpanTimer = 0;
+	float asteroidSpawnTimer = 0;
 	const unsigned char smallAsteroidScore = 100;
 	const unsigned char mediumAsteroidScore = 50;
 	const unsigned char largeAsteroidScore = 20;
@@ -281,15 +315,20 @@ int main(void) {
 	const short smallSaucerScore = 990;
 	const short largeSaucerScore = 300;
 	const float saucerBulletInterval = 1;
-	float saucerBasePrecision = 0.5;
+	float saucerBasePrecision = 2;
 	float saucerSmallPrecisionMult = 0.5;
 	const float saucerBulletSpeed = 200;
 	const float saucerBulletLifetime = 0.75;
 	
+	unsigned char gameState = gameEnd;
+	unsigned char gameType = gamemodeNormal;
 	
 	
 	
-	createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+	
+	
+	
+		
 	//createObject(20,100,-30,0,0,0.8,&smallAsteroidShape,smallAsteroidID,0);
 	//createObject(20,150,-20,0,0,-0.5,&mediumAsteroidShape,mediumAsteroidID,0);
 	
@@ -337,9 +376,58 @@ int main(void) {
 			}
 		}
 		
+		if (gameState == gameEnd){
+			gameState = gameMenu;
+		}
+		if (gameState == gameMenu){
+			if (playerScore > 0){
+				drawText(50,10,"SCORE");
+				drawNumber(50+7*characterSpacing,10,playerScore);
+			}
+			drawText(50,50,"F1  NORMAL PLAY");
+			drawText(50,70,"F2  ASTEROIDS ONLY");
+			drawText(50,110,"X0T LOG  TURN");
+			drawText(50,130,"COS      THRUSTER");
+			drawText(50,150,"TAN      FIRE");
+			drawText(50,190,"1 TOGGLE TRAILS");
+			
+			if (keydownlast(79)){
+				gameState = gameStart;
+				gameType = gamemodeNormal;
+			} else if (keydownlast(69)){
+				gameState = gameStart;
+				gameType = gamemodeAsteroids;
+			}
+		}
+		if (gameState == gameStart){
+			for (i=numEntities-1; i>=0; i--){
+				deleteEntity(i);
+			}
+			
+			playerScore = 0;
+			playerScoreOld = 0;
+			playerLives = 3;
+			playerAlive = 1;
+			
+			asteroidSpawnCount = 4;
+			asteroidSpawnTimer = 0;
+			asteroidSpawnSpeed = 20;
+			
+			saucerCheckTimer = 4;
+			
+			createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+			
+			gameState = gamePlay;
+		}
+		
 		if (keydownlast(72) && !keydownhold(72)){
 			trails = (trails+1)&0x1;
 		}
+		
+		if (playerScore/extraLifeInterval > playerScoreOld/extraLifeInterval){
+			playerLives ++;
+		}
+		playerScoreOld = playerScore;
 		
 		
 		deltaTOld = deltaT;
@@ -351,38 +439,42 @@ int main(void) {
 		}
 		deltaT = deltaT*0.2 + deltaTOld*0.8;
 		
-		if (!playerAlive && playerLives){
+		if (!playerAlive){
 			if (playerDeathTimer>0){
 				playerDeathTimer -= deltaT;
 			} else {
-				x1 = 1;
-				
-				for (i = 0; i<numEntities; i++){
-					entity2 = entities[i];
-					x2 = playerSpawnRadius+sizes[entity2->ID];
-					if (fabs(entity2->x - LCD_WIDTH_PX/2)<x2 && fabs(entity2->y - LCD_HEIGHT_PX/2)<x2){
-						x1 = 0;
+				if (playerLives){
+					x1 = 1;
+					
+					for (i = 0; i<numEntities; i++){
+						entity2 = entities[i];
+						x2 = playerSpawnRadius+sizes[entity2->ID];
+						if (fabs(entity2->x - LCD_WIDTH_PX/2)<x2 && fabs(entity2->y - LCD_HEIGHT_PX/2)<x2){
+							x1 = 0;
+						}
 					}
-				}
-				if (x1){
-					createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
-					playerAlive = 1;
+					if (x1){
+						createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+						playerAlive = 1;
+					}
+				} else {
+					gameState = gameEnd;
 				}
 			}
 		}
 
 		if (!asteroidCount){
-			if (asteroidSpanTimer > 0){
-				asteroidSpanTimer -= deltaT;
+			if (asteroidSpawnTimer > 0){
+				asteroidSpawnTimer -= deltaT;
 			} else {
 				summonAsteroids(asteroidSpawnCount,asteroidSpawnSpeed);
 				asteroidSpawnSpeed += asteroidSpawnSpeedIncrease;
 				asteroidSpawnCount = 6;
-				asteroidSpanTimer += asteroidSpawnDelay;
+				asteroidSpawnTimer += asteroidSpawnDelay;
 			}
 		}
 
-		if (!saucerCount){
+		if (!saucerCount && playerLives && gameType == gamemodeNormal){
 			if (saucerCheckTimer > 0){
 				saucerCheckTimer -= deltaT;
 			} else {
@@ -650,22 +742,12 @@ int main(void) {
 			drawStaticShape(i*10+5.5,32.2,&iconPlayerShape,4);
 		}
 		
-		i = 1;
-		while (playerScore/i){
-			i *= 10;
+		if (gameState == gamePlay){
+			drawNumber(6,10,playerScore);
 		}
-		i /= 10;
-		if (i==0){
-			i = 1;
-		}
-		x1 = 6;
-		y1 = 10;
-		while (i){
-			j = (playerScore/i)%10;
-			drawStaticShape(x1,y1,iconNums[j],iconNumLengths[j]);
-			x1 += 16;
-			i /= 10;
-		}
+		
+		//drawText(7,50,"ABCDEFGHIJKLMNOPQRSTUV");
+		//drawText(7,70,"WXYZ");
 		
 		
 		//for (i = 0; i<(int)(deltaT*1000.0); i++){
