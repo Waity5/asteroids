@@ -1,5 +1,6 @@
-#include <fxcg/display.h>
-#include <fxcg/keyboard.h>
+#include <gint/display.h>
+#include <gint/keyboard.h>
+
 #include <string.h>
 #include <time.h>
 #include <math.h>
@@ -11,6 +12,7 @@
 #define maxEntities 128
 #define shortrandMax 65536.0
 #define shortrandMean 32768.0
+
 
 const unsigned short* keyboard_register = (unsigned short*)0xA44B0000;
 unsigned short lastkey[8];
@@ -88,13 +90,13 @@ void drawLine(float x1, float y1, float x2, float y2){
 		m = (y2-y1)/(x2-x1);
 		y = y1;
 		for (x=x1; x <= x2; x++){
-			offset = ((int)x) + ((int)y)*LCD_WIDTH_PX;
+			offset = ((int)x) + ((int)y)*DWIDTH;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
 			} else if (offset < 0){
 				offset += LCD_PIXELS;
 			}
-			*(p + offset) = COLOR_WHITE;
+			*(p + offset) = C_WHITE;
 			y += m;
 		}
 	} else{
@@ -109,13 +111,13 @@ void drawLine(float x1, float y1, float x2, float y2){
 		m = (x2-x1)/(y2-y1);
 		x = x1;
 		for (y=y1; y <= y2; y++){
-			offset = ((int)x) + ((int)y)*LCD_WIDTH_PX;
+			offset = ((int)x) + ((int)y)*DWIDTH;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
 			} else if (offset < 0){
 				offset += LCD_PIXELS;
 			}
-			*(p + offset) = COLOR_WHITE;
+			*(p + offset) = C_WHITE;
 			x += m;
 		}
 	}
@@ -215,11 +217,11 @@ void summonAsteroids(char count, float meanSpeed){
 	char i;
 	for (i = 0; i < count; i++){
 		if (shortrand()&1){
-			x = shortrand()%LCD_WIDTH_PX;
+			x = shortrand()%DWIDTH;
 			y = 0;
 		} else {
 			x = 0;
-			y = shortrand()%LCD_HEIGHT_PX;
+			y = shortrand()%DHEIGHT;
 		}
 		vx = (((float)shortrand() + (float)shortrand()) / shortrandMax)*meanSpeed;
 		if (shortrand()+shortrand()>shortrandMax){
@@ -236,7 +238,7 @@ void summonAsteroids(char count, float meanSpeed){
 }
 
 void drawText(float x, float y, char text[]){
-	int i;
+	unsigned int i;
 	for (i=0; i < strlen(text); i++){
 		if (text[i] >= 0x41){
 			drawStaticShape(x,y,iconLets[text[i]-0x41],iconLetLengths[text[i]-0x41]);
@@ -266,10 +268,8 @@ void drawNumber(float x, float y, int number){
 }
 
 int main(void) {
-	int key;
-	p = GetVRAMAddress();
+	p = gint_vram;
 	
-
 	int i;
 	int j;
 	float sinCr;
@@ -342,27 +342,26 @@ int main(void) {
 	
     
 	
-	DrawFrame(0);
-	p2 = GetVRAMAddress();
-	for (i = 0; i < LCD_PIXELS>>1; i++){
-		*p2 = 0;
-		p2++;
-	}
+	dclear(C_BLACK);
+	//p2 = (unsigned int*) gint_vram();
+	//for (i = 0; i < LCD_PIXELS>>1; i++){
+	//	*p2 = 0;
+	//	p2++;
+	//}
     
 	
     while (1) {
-		Bdisp_EnableColor(1);
-		
 		keyupdate();
 		
 		shortrand(); // makes the results more random
 		
-		if (keydownlast(KEY_PRGM_MENU)) {
-			GetKey(&key);
-			DrawFrame(0);
+		if (keydownlast(48)) {
+			getkey();
+			//dupdate();
 		}
-		p2 = GetVRAMAddress();
+		
 		if (trails){
+			p2 = (unsigned int*) gint_vram;
 			for (i = 0; i < LCD_PIXELS>>1; i++){
 				if (*p2){
 					*p2 = ((*p2)&0xF7DEF7DE)>>1;
@@ -370,10 +369,11 @@ int main(void) {
 				p2++;
 			}
 		} else{
-			for (i = 0; i < LCD_PIXELS>>1; i++){
-				*p2 = 0;
-				p2++;
-			}
+			dclear(C_BLACK);
+			//for (i = 0; i < LCD_PIXELS>>1; i++){
+			//	*p2 = 0;
+			//	p2++;
+			//}
 		}
 		
 		if (gameState == gameEnd){
@@ -415,7 +415,7 @@ int main(void) {
 			
 			saucerCheckTimer = 4;
 			
-			createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+			createObject(DWIDTH/2,DHEIGHT/2,0,0,0,0,&playerShape,playerID,0);
 			
 			gameState = gamePlay;
 		}
@@ -449,12 +449,12 @@ int main(void) {
 					for (i = 0; i<numEntities; i++){
 						entity2 = entities[i];
 						x2 = playerSpawnRadius+sizes[entity2->ID];
-						if (fabs(entity2->x - LCD_WIDTH_PX/2)<x2 && fabs(entity2->y - LCD_HEIGHT_PX/2)<x2){
+						if (fabs(entity2->x - DWIDTH/2)<x2 && fabs(entity2->y - DHEIGHT/2)<x2){
 							x1 = 0;
 						}
 					}
 					if (x1){
-						createObject(LCD_WIDTH_PX/2,LCD_HEIGHT_PX/2,0,0,0,0,&playerShape,playerID,0);
+						createObject(DWIDTH/2,DHEIGHT/2,0,0,0,0,&playerShape,playerID,0);
 						playerAlive = 1;
 					}
 				} else {
@@ -481,7 +481,7 @@ int main(void) {
 				saucerCheckTimer += saucerCheckDelay;
 				if (shortrand() < saucerSpawnChance){
 					x1 = 0;
-					y1 = shortrand()%LCD_HEIGHT_PX;
+					y1 = shortrand()%DHEIGHT;
 					if (shortrand()&1){
 						x2 = saucerSpeed;
 					} else {
@@ -610,17 +610,17 @@ int main(void) {
 			
 			entity->x += entity->vx*deltaT;
 			entity->y += entity->vy*deltaT;
-			if (entity->x >= LCD_WIDTH_PX){
-				entity->x -= LCD_WIDTH_PX;
+			if (entity->x >= DWIDTH){
+				entity->x -= DWIDTH;
 				entity->y += 1.0;
 			} else if (entity->x < 0){
-				entity->x += LCD_WIDTH_PX;
+				entity->x += DWIDTH;
 				entity->y -= 1.0;
 			}
-			if (entity->y >= LCD_HEIGHT_PX){
-				entity->y -= LCD_HEIGHT_PX;
+			if (entity->y >= DHEIGHT){
+				entity->y -= DHEIGHT;
 			} else if (entity->y < 0){
-				entity->y += LCD_HEIGHT_PX;
+				entity->y += DHEIGHT;
 			}
 			
 			if (entity -> alive){
@@ -743,7 +743,7 @@ int main(void) {
 		}
 		
 		if (gameState == gamePlay){
-			drawNumber(6,10,playerScore);
+			drawNumber(6,10,deltaT*1000);
 		}
 		
 		//drawText(7,50,"ABCDEFGHIJKLMNOPQRSTUV");
@@ -753,7 +753,7 @@ int main(void) {
 		//for (i = 0; i<(int)(deltaT*1000.0); i++){
 		//	drawLine((i/5)*15,(i%5)*5+2,10+(i/5)*15,(i%5)*5+2);	
 		//}
-		//drawLine(0,10,deltaT*15.0*((float)LCD_WIDTH_PX),10);
+		//drawLine(0,10,deltaT*15.0*((float)DWIDTH),10);
 		
         
 		
@@ -761,7 +761,7 @@ int main(void) {
         //Print_OS("Press EXE to exit", 0, 0);
 
         
-        Bdisp_PutDisp_DD();
+        dupdate();
 		
 		
 		

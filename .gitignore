@@ -1,1 +1,4 @@
 /build
+/build*/
+/src/include
+src/include.code-workspace
