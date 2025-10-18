@@ -28,9 +28,6 @@
 #define gamemodeNormal 0
 #define gamemodeAsteroids 1
 
-#define DWIDTH 396
-#define LCD_HEIGHT_PX 224 
-
 
 const float playerShape[4][2] = {{8, 0}, {-8,5}, {-2,0}, {-8,-5}};
 const float playerBulletShape[2][2] = {{5, 0},{-5, 0}};
@@ -42,7 +39,7 @@ const float largeSaucerShape[10][2] = {{12, 0},{9, 3},{-9,3},{-12,0},{-9,-3},{6,
 const float saucerBulletShape[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
 
 const unsigned char lengths[entityCount] = {4,2,4,4,4,10,10,4};
-const unsigned char sizes[entityCount] = {6,3,4,6,12,6,9,1};
+const unsigned char sizes[entityCount] = {5,3,4,6,12,6,9,1};
 
 const float iconPlayerShape[4][4] = {{-8, 0, 8, -5},{8, -5, 2, 0},{2, 0, 8, 5},{8, 5, -8, 0}};
 
@@ -91,7 +88,7 @@ const float (*iconLets[26])[][4] = {&iconLetA,&iconLetB,&iconLetC,&iconLetD,&ico
 	&iconLetN,&iconLetO,&iconLetP,&iconLetQ,&iconLetR,&iconLetS,&iconLetT,&iconLetU,&iconLetV,&iconLetW,&iconLetX,&iconLetY,&iconLetZ};
 const unsigned char iconLetLengths[26] = {4,8,3,6,4,3,5,3,3,4,3,2,4,3,4,4,6,5,5,2,3,2,4,2,3,3};
 
-const int LCD_PIXELS = DWIDTH*LCD_HEIGHT_PX;
+const int LCD_PIXELS = DWIDTH*DHEIGHT;
 
 unsigned char collisionTable[entityCount][entityCount] = {
 	{0,0,1,1,1,1,1,1},

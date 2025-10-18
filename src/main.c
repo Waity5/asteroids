@@ -21,7 +21,7 @@ unsigned short* p;
 unsigned int* p2;
 const float PI = 3.14159265358979323846264338327950288419716939937510582097;
 const float TAU = PI*2.0;
-int tick;
+int tick = 0;
 const float SECS_PER_CLOCK_FLOAT = 1.0 / (float)CLOCKS_PER_SEC;
 
 const float characterSpacing = 16;
@@ -276,7 +276,7 @@ int main(void) {
 	float cosCr;
 	float x1, y1, x2, y2;
 	unsigned char length;
-	unsigned char trails = 1;
+	unsigned char trailType = 1;
 	float playerDeathTimer = 0;
 	object *entity;
 	object *entity2;
@@ -284,7 +284,7 @@ int main(void) {
 	int playerScore = 0;
 	int playerScoreOld = 0;
 	const int extraLifeInterval = 10000;
-	const unsigned char playerSpawnRadius = 25;
+	const unsigned char playerSpawnRadius = 40;
 	unsigned char playerLives = 0;
 	unsigned char playerAlive = 0;
 	const float playerRotSpeed = 6;
@@ -360,7 +360,18 @@ int main(void) {
 			//dupdate();
 		}
 		
-		if (trails){
+		if (trailType == 2){
+			for (i = 0; i < DHEIGHT; i++){
+				p = gint_vram + i*DWIDTH + ((tick+i)&1);
+				for (j = 0; j < DWIDTH>>1; j++){
+					if (*p){
+						*p = ((*p)&0xF7DE)>>1;
+					}
+					p += 2;
+				}
+			}
+			p = gint_vram;
+		} else if (trailType == 1){
 			p2 = (unsigned int*) gint_vram;
 			for (i = 0; i < LCD_PIXELS>>1; i++){
 				if (*p2){
@@ -389,7 +400,7 @@ int main(void) {
 			drawText(50,110,"X0T LOG  TURN");
 			drawText(50,130,"COS      THRUSTER");
 			drawText(50,150,"TAN      FIRE");
-			drawText(50,190,"1 TOGGLE TRAILS");
+			drawText(50,190,"1 ADJUST TRAILS");
 			
 			if (keydownlast(79)){
 				gameState = gameStart;
@@ -421,7 +432,7 @@ int main(void) {
 		}
 		
 		if (keydownlast(72) && !keydownhold(72)){
-			trails = (trails+1)&0x1;
+			trailType = (trailType+1)%3;
 		}
 		
 		if (playerScore/extraLifeInterval > playerScoreOld/extraLifeInterval){
@@ -743,7 +754,7 @@ int main(void) {
 		}
 		
 		if (gameState == gamePlay){
-			drawNumber(6,10,deltaT*1000);
+			drawNumber(6,10,playerScore);
 		}
 		
 		//drawText(7,50,"ABCDEFGHIJKLMNOPQRSTUV");
@@ -759,7 +770,7 @@ int main(void) {
 		
 		
         //Print_OS("Press EXE to exit", 0, 0);
-
+		tick += 1;
         
         dupdate();
 		
