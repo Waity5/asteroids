@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "main.h"
+#include "fp.c"
 
 
 #define maxEntities 128
@@ -19,12 +20,12 @@ unsigned short lastkey[8];
 unsigned short holdkey[8];
 unsigned short* p;
 unsigned int* p2;
-const float PI = 3.14159265358979323846264338327950288419716939937510582097;
-const float TAU = PI*2.0;
-int tick = 0;
-const float SECS_PER_CLOCK_FLOAT = 1.0 / (float)CLOCKS_PER_SEC;
+const int32_t PI = (3.14159265358979323846264338327950288419716939937510582097 * FPOne);
+const int32_t TAU = PI*2;
+int32_t tick = 0;
+const float SECS_PER_CLOCK = 1.0 / CLOCKS_PER_SEC;
 
-const float characterSpacing = 16;
+const int characterSpacing = 16;
 
 unsigned char playerBulletCount = 0;
 unsigned char asteroidCount = 0;
@@ -38,6 +39,7 @@ clock_t t1 = 0;
 clock_t t2 = 0;
 float deltaT = 0.02;
 float deltaTOld;
+int32_t deltaTFP;
 
 unsigned int seed = 123456789;
 
@@ -73,12 +75,12 @@ unsigned short getColorFromShade(unsigned short shade){
 	return (x | (shade<<5) | (x<<11));
 }
 
-void drawLine(float x1, float y1, float x2, float y2){
-	float m;
-	float x;
-	float y;
+void drawLine(int32_t x1, int32_t y1, int32_t x2, int32_t y2){
+	int32_t m;
+	int32_t x;
+	int32_t y;
 	int offset;
-	if (fabs(x2-x1) > fabs(y2-y1)){
+	if (abs(x2-x1) > abs(y2-y1)){
 		if (x1>x2){
 			m = x2;
 			x2 = x1;
@@ -87,10 +89,10 @@ void drawLine(float x1, float y1, float x2, float y2){
 			y2 = y1;
 			y1 = m;
 		}
-		m = (y2-y1)/(x2-x1);
+		m = FPDiv((y2-y1),(x2-x1));
 		y = y1;
-		for (x=x1; x <= x2; x++){
-			offset = ((int)x) + ((int)y)*DWIDTH;
+		for (x=x1; x <= x2; x+=FPOne){
+			offset = FPToInt(x) + FPToInt(y)*DWIDTH;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
 			} else if (offset < 0){
@@ -108,10 +110,10 @@ void drawLine(float x1, float y1, float x2, float y2){
 			y2 = y1;
 			y1 = m;
 		}
-		m = (x2-x1)/(y2-y1);
+		m = FPDiv((x2-x1),(y2-y1));
 		x = x1;
-		for (y=y1; y <= y2; y++){
-			offset = ((int)x) + ((int)y)*DWIDTH;
+		for (y=y1; y <= y2; y+=FPOne){
+			offset = FPToInt(x) + FPToInt(y)*DWIDTH;
 			if (offset >= LCD_PIXELS){
 				offset -= LCD_PIXELS;
 			} else if (offset < 0){
@@ -123,28 +125,28 @@ void drawLine(float x1, float y1, float x2, float y2){
 	}
 }
 
-float fsin(float x) {
-   if(x > PI) { return -fsin(x - PI); }
-   if(x > PI / 2) { return fsin(PI - x); }
-   return x - ((x*x*x) / 6.0) + ((x*x*x*x*x) / 120.0) - ((x*x*x*x*x*x*x) / 5040.0);
+int32_t fpsin(int32_t x) {
+	if(x > PI) { return -fpsin(x - PI); }
+	if(x > PI / 2) { return fpsin(PI - x); }
+	return x - ((FPMult(FPMult(x,x),x)) / 6) + ((FPMult(FPMult(FPMult(FPMult(x,x),x),x),x)) / 120) - ((FPMult(FPMult(FPMult(FPMult(FPMult(FPMult(x,x),x),x),x),x),x)) / 5040);
 }
 
-float fcos(float x) {
-   return fsin(x + (PI / 2));
+int32_t fpcos(int32_t x) {
+   return fpsin(x + (PI / 2));
 }
 
-float fsqrt(float x){
-	float guess = 1;
-	while (fabs(guess*guess - x) > 0.1){
-		guess = ((x/guess) + guess)/2;
+int32_t fpsqrt(int32_t x){
+	int32_t guess = FPOne;
+	while (abs(FPMult(guess,guess) - x) > 1<<(FPOffset-4)){
+		guess = (FPDiv(x,guess) + guess)/2;
 	}
 	return guess;
 }
 
-float fwrap(float x){
+int32_t fpwrap(int32_t x){
 	if (x<0){
 		return x + TAU;
-	} else if (x>=PI){
+	} else if (x>=TAU){
 		return x - TAU;
 	}
 	return x;
@@ -171,7 +173,7 @@ void deleteEntity(int index){
 	
 }
 
-void createObject(float x, float y, float vx, float vy, float rot, float vrot, const float (*shape)[][2], unsigned char ID, float timer){
+void createObject(int32_t x, int32_t y, int32_t vx, int32_t vy, int32_t rot, int32_t vrot, const int32_t (*shape)[][2], unsigned char ID, int32_t timer){
 	if (numEntities<maxEntities){
 		object* newObject;
 		newObject = malloc(sizeof(object));
@@ -205,52 +207,56 @@ void createObject(float x, float y, float vx, float vy, float rot, float vrot, c
 	}
 }
 
-void drawStaticShape(float x, float y, const float (*shape)[][4], unsigned char length){
+void drawStaticShape(int32_t x, int32_t y, const int32_t (*shape)[][4], unsigned char length){
 	unsigned char i;
 	for (i = 0; i<length; i++){
-		drawLine((*shape)[i][1] + x, (*shape)[i][0] + y, (*shape)[i][3] + x, (*shape)[i][2] + y);
+		drawLine(intToFP((*shape)[i][1]) + x, intToFP((*shape)[i][0]) + y, intToFP((*shape)[i][3]) + x, intToFP((*shape)[i][2]) + y);
 	}
 }
 
-void summonAsteroids(char count, float meanSpeed){
-	float x,y,vx,vy,rot,vrot;
+void summonAsteroids(char count, int32_t meanSpeed){
+	int32_t x,y,vx,vy,rot,vrot;
 	char i;
 	for (i = 0; i < count; i++){
 		if (shortrand()&1){
-			x = shortrand()%DWIDTH;
+			x = intToFP(shortrand()%DWIDTH);
 			y = 0;
 		} else {
 			x = 0;
-			y = shortrand()%DHEIGHT;
+			y = intToFP(shortrand()%DHEIGHT);
 		}
-		vx = (((float)shortrand() + (float)shortrand()) / shortrandMax)*meanSpeed;
-		if (shortrand()+shortrand()>shortrandMax){
+		vx = (FPMult(intToFP(shortrand()) + intToFP(shortrand()), meanSpeed/shortrandMax));
+		if ((int) shortrand() + (int) shortrand()>shortrandMax){
 			vx = -vx;
 		}
-		vy = (((float)shortrand() + (float)shortrand()) / shortrandMax)*meanSpeed;
-		if (shortrand()+shortrand()>shortrandMax){
+		vy = (FPMult(intToFP(shortrand()) + intToFP(shortrand()), meanSpeed/shortrandMax));
+		if ((int) shortrand() + (int) shortrand()>shortrandMax){
 			vy = -vy;
 		}
-		rot = ((float)shortrand() / shortrandMean)*3.14;
-		vrot = (((float)shortrand() / shortrandMean)-1)*0.7;
+		rot = (intToFP(shortrand()) / shortrandMean)*3.14;
+		vrot = ((intToFP(shortrand()) / shortrandMean)-intToFP(1))*0.7;
 		createObject(x,y,vx,vy,rot,vrot,&largeAsteroidShape,largeAsteroidID,0);	
 	}
 }
 
-void drawText(float x, float y, char text[]){
+void drawText(int x, int y, char text[]){
 	unsigned int i;
 	for (i=0; i < strlen(text); i++){
-		if (text[i] >= 0x41){
-			drawStaticShape(x,y,iconLets[text[i]-0x41],iconLetLengths[text[i]-0x41]);
-		} else if (text[i] >= 0x30){
-			drawStaticShape(x,y,iconNums[text[i]-0x30],iconNumLengths[text[i]-0x30]);
+		if (text[i] >= 0x41 && text[i] <= 0x5A){
+			drawStaticShape(intToFP(x),intToFP(y),iconLets[text[i]-0x41],iconLetLengths[text[i]-0x41]);
+		} else if (text[i] >= 0x30 && text[i] <= 0x39){
+			drawStaticShape(intToFP(x),intToFP(y),iconNums[text[i]-0x30],iconNumLengths[text[i]-0x30]);
 		}
 		x += characterSpacing;
 	}
 }
 
-void drawNumber(float x, float y, int number){
+void drawNumber(int x, int y, int number){
 	int i,j;
+	if (number < 0){
+		number = -number;
+		x += characterSpacing;
+	}
 	i = 1;
 	while (number/i){
 		i *= 10;
@@ -261,7 +267,7 @@ void drawNumber(float x, float y, int number){
 	}
 	while (i){
 		j = (number/i)%10;
-		drawStaticShape(x,y,iconNums[j],iconNumLengths[j]);
+		drawStaticShape(intToFP(x),intToFP(y),iconNums[j],iconNumLengths[j]);
 		x += characterSpacing;
 		i /= 10;
 	}
@@ -272,12 +278,12 @@ int main(void) {
 	
 	int i;
 	int j;
-	float sinCr;
-	float cosCr;
-	float x1, y1, x2, y2;
+	int32_t sinCr;
+	int32_t cosCr;
+	int32_t x1, y1, x2, y2;
 	unsigned char length;
-	unsigned char trailType = 1;
-	float playerDeathTimer = 0;
+	unsigned char trailType = 2  ;
+	int32_t playerDeathTimer = 0;
 	object *entity;
 	object *entity2;
 	
@@ -287,38 +293,38 @@ int main(void) {
 	const unsigned char playerSpawnRadius = 40;
 	unsigned char playerLives = 0;
 	unsigned char playerAlive = 0;
-	const float playerRotSpeed = 6;
-	const float	playerAccl = 150;
-	const float playerDrag = 5;
-	const float	playerMaxSpeed = 300;
-	const float playerBulletSpeed = 200;
-	const float playerBulletLifetime = 1;
-	const float playerDeathTimerMax = 3;
+	const int32_t playerRotSpeed = intToFP(6);
+	const int playerAccl = 150;
+	const int32_t playerDrag = intToFP(5);
+	const int32_t playerMaxSpeed = intToFP(300);
+	const int playerBulletSpeed = 200;
+	const int32_t playerBulletLifetime = intToFP(1);
+	const int32_t playerDeathTimerMax = intToFP(3);
 
 	char asteroidSpawnCount = 4;
-	const float asteroidSpawnDelay = 3;
-	float asteroidSpawnTimer = 0;
+	const int32_t asteroidSpawnDelay = intToFP(3);
+	int32_t asteroidSpawnTimer = 0;
 	const unsigned char smallAsteroidScore = 100;
 	const unsigned char mediumAsteroidScore = 50;
 	const unsigned char largeAsteroidScore = 20;
-	float asteroidSpawnSpeed = 20;
-	const float asteroidSpawnSpeedIncrease = 2;
-	const float asteroidSlipForwardMult = 1.2/shortrandMax;
-	const float asteroidSlipSidewaysMult = 1.5/shortrandMax;
-	const float asteroidSplitVRot = 1.2;
+	int32_t asteroidSpawnSpeed = intToFP(20);
+	const int32_t asteroidSpawnSpeedIncrease = intToFP(2);
+	const int32_t asteroidSlipForwardMult = floatToFP(1.2);
+	const int32_t asteroidSlipSidewaysMult = floatToFP(1.5);
+	const int32_t asteroidSplitVRot = floatToFP(1.2);
 
-	const float saucerCheckDelay = 4;
-	float saucerCheckTimer = 4;
+	const int32_t saucerCheckDelay = intToFP(4);
+	int32_t saucerCheckTimer = intToFP(4);
 	unsigned short saucerSpawnChance = shortrandMax/5;
 	unsigned short saucerSmallSpawnChance = shortrandMax/2;
-	const float saucerSpeed = 60;
-	const short smallSaucerScore = 990;
-	const short largeSaucerScore = 300;
-	const float saucerBulletInterval = 1;
-	float saucerBasePrecision = 2;
-	float saucerSmallPrecisionMult = 0.5;
-	const float saucerBulletSpeed = 200;
-	const float saucerBulletLifetime = 0.75;
+	const int32_t saucerSpeed = intToFP(60);
+	const int smallSaucerScore = 990;
+	const int largeSaucerScore = 300;
+	const int32_t saucerBulletInterval = intToFP(1);
+	int32_t saucerBasePrecision = intToFP(2);
+	int32_t saucerSmallPrecisionMult = floatToFP(0.5);
+	const int32_t saucerBulletSpeed = intToFP(200);
+	const int32_t saucerBulletLifetime = floatToFP(0.75);
 	
 	unsigned char gameState = gameEnd;
 	unsigned char gameType = gamemodeNormal;
@@ -422,11 +428,11 @@ int main(void) {
 			
 			asteroidSpawnCount = 4;
 			asteroidSpawnTimer = 0;
-			asteroidSpawnSpeed = 20;
+			asteroidSpawnSpeed = intToFP(20);
 			
-			saucerCheckTimer = 4;
+			saucerCheckTimer = intToFP(4);
 			
-			createObject(DWIDTH/2,DHEIGHT/2,0,0,0,0,&playerShape,playerID,0);
+			createObject(intToFP(DWIDTH/2),intToFP(DHEIGHT/2),0,0,0,0,&playerShape,playerID,0);
 			
 			gameState = gamePlay;
 		}
@@ -443,16 +449,18 @@ int main(void) {
 		
 		deltaTOld = deltaT;
 		t2 = clock();
-		deltaT = (float)(t2-t1) * SECS_PER_CLOCK_FLOAT;
+		deltaT = (t2-t1) * SECS_PER_CLOCK;
 		t1 = t2;
 		if (deltaT > 0.2){
-			deltaT = 0.0;
+			deltaT = 0;
 		}
 		deltaT = deltaT*0.2 + deltaTOld*0.8;
 		
+		deltaTFP = floatToFP(deltaT);
+		
 		if (!playerAlive){
 			if (playerDeathTimer>0){
-				playerDeathTimer -= deltaT;
+				playerDeathTimer -= deltaTFP;
 			} else {
 				if (playerLives){
 					x1 = 1;
@@ -460,12 +468,12 @@ int main(void) {
 					for (i = 0; i<numEntities; i++){
 						entity2 = entities[i];
 						x2 = playerSpawnRadius+sizes[entity2->ID];
-						if (fabs(entity2->x - DWIDTH/2)<x2 && fabs(entity2->y - DHEIGHT/2)<x2){
+						if (abs(FPToInt(entity2->x) - DWIDTH/2)<x2 && abs(FPToInt(entity2->y) - DHEIGHT/2)<x2){
 							x1 = 0;
 						}
 					}
 					if (x1){
-						createObject(DWIDTH/2,DHEIGHT/2,0,0,0,0,&playerShape,playerID,0);
+						createObject(intToFP(DWIDTH/2),intToFP(DHEIGHT/2),0,0,0,0,&playerShape,playerID,0);
 						playerAlive = 1;
 					}
 				} else {
@@ -476,7 +484,7 @@ int main(void) {
 
 		if (!asteroidCount){
 			if (asteroidSpawnTimer > 0){
-				asteroidSpawnTimer -= deltaT;
+				asteroidSpawnTimer -= deltaTFP;
 			} else {
 				summonAsteroids(asteroidSpawnCount,asteroidSpawnSpeed);
 				asteroidSpawnSpeed += asteroidSpawnSpeedIncrease;
@@ -487,12 +495,12 @@ int main(void) {
 
 		if (!saucerCount && playerLives && gameType == gamemodeNormal){
 			if (saucerCheckTimer > 0){
-				saucerCheckTimer -= deltaT;
+				saucerCheckTimer -= deltaTFP;
 			} else {
 				saucerCheckTimer += saucerCheckDelay;
 				if (shortrand() < saucerSpawnChance){
 					x1 = 0;
-					y1 = shortrand()%DHEIGHT;
+					y1 = intToFP((shortrand()%(DHEIGHT>>1)) + (shortrand()%(DHEIGHT>>1)));
 					if (shortrand()&1){
 						x2 = saucerSpeed;
 					} else {
@@ -509,9 +517,9 @@ int main(void) {
 						}
 					}
 					if (j){
-						createObject(x1,y1,x2,y2,0,0,&smallSaucerShape,smallSaucerID,3);
+						createObject(x1,y1,x2,y2,0,0,&smallSaucerShape,smallSaucerID,intToFP(3));
 					} else {
-						createObject(x1,y1,x2,y2,0,0,&largeSaucerShape,largeSaucerID,3);
+						createObject(x1,y1,x2,y2,0,0,&largeSaucerShape,largeSaucerID,intToFP(3));
 					}
 				}
 			}
@@ -530,39 +538,39 @@ int main(void) {
 			length = lengths[entity->ID];
 			if (entity->ID == playerID){
 				if (keydownlast(76)){
-					entity->rot += deltaT*playerRotSpeed;
+					entity->rot += FPMult(deltaTFP,playerRotSpeed);
 				}
 				if (keydownlast(66)){
-					entity->rot -= deltaT*playerRotSpeed;
+					entity->rot -= FPMult(deltaTFP,playerRotSpeed);
 				}
 			}
 
 			
 			
 			
-			entity->rot += entity->vrot * deltaT;
-			entity->rot = fwrap(entity->rot);
+			entity->rot += FPMult(entity->vrot, deltaTFP);
+			entity->rot = fpwrap(entity->rot);
 			
-			sinCr = fsin(entity->rot);
-			cosCr = fcos(entity->rot);
+			sinCr = fpsin(entity->rot);
+			cosCr = fpcos(entity->rot);
 			if (entity->ID == playerID){
 				if (keydownlast(36)){
-					entity->vx += cosCr*deltaT*playerAccl;
-					entity->vy -= sinCr*deltaT*playerAccl;
+					entity->vx += FPMult(cosCr,deltaTFP)*playerAccl;
+					entity->vy -= FPMult(sinCr,deltaTFP)*playerAccl;
 				}
-				x1 = fsqrt(entity->vx*entity->vx + entity->vy*entity->vy);
-				if (x1>0.0) {
+				x1 = fpsqrt(FPMult(entity->vx,entity->vx) + FPMult(entity->vy,entity->vy));
+				if (x1>0) {
 					if (x1>playerMaxSpeed){
 						x2 = playerMaxSpeed; //cap speed
 					} else {
-						x2 = x1 - playerDrag*deltaT; //reduce speed
-						if (x2 < 0.0){
+						x2 = x1 - FPMult(playerDrag,deltaTFP); //reduce speed
+						if (x2 < 0){
 							x2 = 0;
 						}
 					}
-					x2 = x2/x1;
-					entity->vx = entity->vx * x2;
-					entity->vy = entity->vy * x2;
+					x2 = FPDiv(x2,x1);
+					entity->vx = FPMult(entity->vx, x2);
+					entity->vy = FPMult(entity->vy, x2);
 				}
 				if (keydownlast(26) && !keydownhold(26) && playerBulletCount<4){
 					createObject(
@@ -580,7 +588,7 @@ int main(void) {
 			}
 			
 			if (entity->timer > 0){
-				entity->timer -= deltaT;
+				entity->timer -= deltaTFP;
 			} else{
 				switch (entity->ID){
 					case playerBulletID:
@@ -600,16 +608,17 @@ int main(void) {
 									y1 = entity2->y - entity->y;
 								}
 							}
-							x2 = saucerBulletSpeed/fsqrt(x1*x1 + y1*y1);
-							x1 *= x2;
-							y1 *= x2;
-							x2 = (((float)shortrand() / shortrandMean)-1) * saucerBasePrecision;
+							x2 = FPDiv(saucerBulletSpeed,fpsqrt(FPMult(x1,x1) + FPMult(y1,y1)));
+							x1 = FPMult(x1, x2);
+							y1 = FPMult(y1, x2);
+							x2 = FPMult(((intToFP(shortrand()) / shortrandMean)-FPOne), saucerBasePrecision);
 							if (entity->ID == smallSaucerID){
-								x2 *= saucerSmallPrecisionMult;
+								x2 = FPMult(x2, saucerSmallPrecisionMult);
 							}
-							cosCr = fcos(x2);
-							sinCr = fsin(x2);
-							createObject(entity->x, entity->y, x1*cosCr+y1*sinCr, y1*cosCr+x1*sinCr, 0, 0, &saucerBulletShape, saucerBulletID, saucerBulletLifetime);
+							x2 = fpwrap(x2);
+							cosCr = fpcos(x2);
+							sinCr = fpsin(x2);
+							createObject(entity->x, entity->y, FPMult(x1,cosCr)+FPMult(y1,sinCr), FPMult(y1,cosCr)+FPMult(x1,sinCr), 0, 0, &saucerBulletShape, saucerBulletID, saucerBulletLifetime);
 						}
 						break;
 					case saucerBulletID:
@@ -619,26 +628,26 @@ int main(void) {
 				}
 			}
 			
-			entity->x += entity->vx*deltaT;
-			entity->y += entity->vy*deltaT;
-			if (entity->x >= DWIDTH){
-				entity->x -= DWIDTH;
-				entity->y += 1.0;
+			entity->x += FPMult(entity->vx,deltaTFP);
+			entity->y += FPMult(entity->vy,deltaTFP);
+			if (entity->x >= intToFP(DWIDTH)){
+				entity->x -= intToFP(DWIDTH);
+				entity->y += intToFP(1);
 			} else if (entity->x < 0){
-				entity->x += DWIDTH;
-				entity->y -= 1.0;
+				entity->x += intToFP(DWIDTH);
+				entity->y -= intToFP(1);
 			}
-			if (entity->y >= DHEIGHT){
-				entity->y -= DHEIGHT;
+			if (entity->y >= intToFP(DHEIGHT)){
+				entity->y -= intToFP(DHEIGHT);
 			} else if (entity->y < 0){
-				entity->y += DHEIGHT;
+				entity->y += intToFP(DHEIGHT);
 			}
 			
 			if (entity -> alive){
 				for (j=0; j<numEntities; j++){
 					entity2 = entities[j];
-					x1 = sizes[entity->ID]+sizes[entity2->ID];
-					if (collisionTable[entity->ID][entity2->ID] && fabs(entity2->x - entity->x)<x1 && fabs(entity2->y - entity->y)<x1 && entity2->alive){
+					x1 = intToFP(sizes[entity->ID]+sizes[entity2->ID]);
+					if (collisionTable[entity->ID][entity2->ID] && abs(entity2->x - entity->x)<x1 && abs(entity2->y - entity->y)<x1 && entity2->alive){
 						entity->alive = 0;
 						entity->killer = entity2->ID;
 						entity2->alive = 0;
@@ -677,28 +686,28 @@ int main(void) {
 					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += mediumAsteroidScore;
 					}
-					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
-					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
+					cosCr = FPMult(intToFP((int)shortrand() + (int)shortrand()) / shortrandMax, asteroidSlipForwardMult);
+					sinCr = FPMult(intToFP((int)shortrand() - (int)shortrand()) / shortrandMax, asteroidSlipSidewaysMult);
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * cosCr + entity->vy * sinCr,
-						entity->vy * cosCr - entity->vx * sinCr,
-						entity->rot + 0.5,
-						entity->vrot * -asteroidSplitVRot,
+						FPMult(entity->vx, cosCr) + FPMult(entity->vy, sinCr),
+						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
+						entity->rot + floatToFP(0.5),
+						FPMult(entity->vrot, -asteroidSplitVRot),
 						&smallAsteroidShape,
 						smallAsteroidID,
 						0.0
 					);
-					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
-					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
+					cosCr = FPMult(intToFP((int)shortrand() + (int)shortrand()) / shortrandMax, asteroidSlipForwardMult);
+					sinCr = FPMult(intToFP((int)shortrand() - (int)shortrand()) / shortrandMax, asteroidSlipSidewaysMult);
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * cosCr - entity->vy * sinCr,
-						entity->vy * cosCr + entity->vx * sinCr,
-						-entity->rot - 1.7,
-						entity->vrot * asteroidSplitVRot,
+						FPMult(entity->vx, cosCr) + FPMult(entity->vy, sinCr),
+						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
+						-entity->rot - floatToFP(1.7),
+						FPMult(entity->vrot, asteroidSplitVRot),
 						&smallAsteroidShape,
 						smallAsteroidID,
 						0.0
@@ -708,28 +717,28 @@ int main(void) {
 					if (entity->killer == playerID || entity->killer == playerBulletID){
 						playerScore += largeAsteroidScore;
 					}
-					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
-					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
+					cosCr = FPMult(intToFP((int)shortrand() + (int)shortrand()) / shortrandMax, asteroidSlipForwardMult);
+					sinCr = FPMult(intToFP((int)shortrand() - (int)shortrand()) / shortrandMax, asteroidSlipSidewaysMult);
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * cosCr + entity->vy * sinCr,
-						entity->vy * cosCr - entity->vx * sinCr,
-						entity->rot + 1.5,
-						entity->vrot * -asteroidSplitVRot,
+						FPMult(entity->vx, cosCr) + FPMult(entity->vy, sinCr),
+						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
+						entity->rot + floatToFP(1.5),
+						FPMult(entity->vrot, -asteroidSplitVRot),
 						&mediumAsteroidShape,
 						mediumAsteroidID,
 						0.0
 					);
-					cosCr = ((float)shortrand() + (float)shortrand()) * asteroidSlipForwardMult;
-					sinCr = ((float)shortrand() - (float)shortrand()) * asteroidSlipSidewaysMult;
+					cosCr = FPMult(intToFP((int)shortrand() + (int)shortrand()) / shortrandMax, asteroidSlipForwardMult);
+					sinCr = FPMult(intToFP((int)shortrand() - (int)shortrand()) / shortrandMax, asteroidSlipSidewaysMult);
 					createObject(
 						entity->x,
 						entity->y,
-						entity->vx * cosCr - entity->vy * sinCr,
-						entity->vy * cosCr + entity->vx * sinCr,
-						-entity->rot - 0.4,
-						entity->vrot * asteroidSplitVRot,
+						FPMult(entity->vx, cosCr) + FPMult(entity->vy, sinCr),
+						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
+						-entity->rot - floatToFP(0.4),
+						FPMult(entity->vrot, asteroidSplitVRot),
 						&mediumAsteroidShape,
 						mediumAsteroidID,
 						0.0
@@ -750,21 +759,26 @@ int main(void) {
 			}
 		}
 		for (i=0; i<playerLives; i++){
-			drawStaticShape(i*10+5.5,32.2,&iconPlayerShape,4);
+			drawStaticShape(floatToFP(i*10+5.5),floatToFP(32.2),&iconPlayerShape,4);
 		}
 		
 		if (gameState == gamePlay){
 			drawNumber(6,10,playerScore);
 		}
 		
+		drawNumber(6,58,deltaT*1000);
+		
+		//drawNumber(6,80,CLOCKS_PER_SEC);
+		//drawNumber(6,100,((int) -1) >> 5);
+		
 		//drawText(7,50,"ABCDEFGHIJKLMNOPQRSTUV");
 		//drawText(7,70,"WXYZ");
 		
 		
-		//for (i = 0; i<(int)(deltaT*1000.0); i++){
+		//for (i = 0; i<(int)(deltaTFP*1000.0); i++){
 		//	drawLine((i/5)*15,(i%5)*5+2,10+(i/5)*15,(i%5)*5+2);	
 		//}
-		//drawLine(0,10,deltaT*15.0*((float)DWIDTH),10);
+		//drawLine(0,10,deltaTFP*15.0*((float)DWIDTH),10);
 		
         
 		
