@@ -1,5 +1,7 @@
 #include <gint/display.h>
 #include <gint/keyboard.h>
+#include <gint/drivers/r61524.h>
+#include <gint/dma.h>
 
 #include <string.h>
 #include <time.h>
@@ -14,11 +16,14 @@
 #define shortrandMax 65536.0
 #define shortrandMean 32768.0
 
+unsigned short* const secondVRAM = (unsigned short*)0xe5007000;
+#define blockSize 4
 
 const unsigned short* keyboard_register = (unsigned short*)0xA44B0000;
 unsigned short lastkey[8];
 unsigned short holdkey[8];
 unsigned short* p;
+unsigned short* pointer;
 unsigned int* p2;
 const int32_t PI = (3.14159265358979323846264338327950288419716939937510582097 * FPOne);
 const int32_t TAU = PI*2;
@@ -38,8 +43,17 @@ object *entities[maxEntities];
 clock_t t1 = 0;
 clock_t t2 = 0;
 float deltaT = 0.02;
-float deltaTOld;
+float deltaTOld = 0.02;
 int32_t deltaTFP;
+
+clock_t t1Dim = 0;
+clock_t t2Dim = 0;
+float deltaTDim = 0.02;
+
+clock_t t1Display = 0;
+clock_t t2Display = 0;
+float deltaTDisplay = 0.02;
+
 
 unsigned int seed = 123456789;
 
@@ -278,6 +292,7 @@ int main(void) {
 	
 	int i;
 	int j;
+	int k;
 	int32_t sinCr;
 	int32_t cosCr;
 	int32_t x1, y1, x2, y2;
@@ -366,32 +381,55 @@ int main(void) {
 			//dupdate();
 		}
 		
-		if (trailType == 2){
-			for (i = 0; i < DHEIGHT; i++){
-				p = gint_vram + i*DWIDTH + ((tick+i)&1);
-				for (j = 0; j < DWIDTH>>1; j++){
-					if (*p){
-						*p = ((*p)&0xF7DE)>>1;
+		
+		t1Dim = clock();
+		//for (i = 0; i < DHEIGHT; i+=4){
+		//	r61524_display(p,i,4,R61524_DMA);
+		//}
+		
+		if (trailType){
+			p2 = (unsigned int*) secondVRAM;
+			for (i = 0; i < DHEIGHT; i+=blockSize){
+				dma_transfer_async(1,DMA_32B,DWIDTH*2*blockSize/32, p + (i*DWIDTH), DMA_INC, secondVRAM + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
+				dma_transfer_wait(1);
+				r61524_display(secondVRAM,i,blockSize,R61524_DMA_WAIT);
+				
+				if (trailType == 2){
+					for (j = i; j < i+blockSize; j++){
+						pointer = secondVRAM + j*DWIDTH + ((tick+j)&1);
+						for (k = 0; k < DWIDTH>>1; k++){
+							*pointer = ((*pointer)&0xF7DE)>>1;
+							pointer += 2;
+						}
 					}
-					p += 2;
+				} else {
+					for (j = 0; j < DWIDTH*blockSize/2; j++){
+						if (*p2){
+							*p2 = ((*p2)&0xF7DEF7DE)>>1;
+						}
+						p2++;
+					}
 				}
+				
+				if (i){
+					dma_transfer_wait(2);
+				}
+				dma_transfer_async(2,DMA_32B,DWIDTH*blockSize/16, secondVRAM + (i*DWIDTH), DMA_INC, p + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
 			}
+			
+			
 			p = gint_vram;
-		} else if (trailType == 1){
-			p2 = (unsigned int*) gint_vram;
-			for (i = 0; i < LCD_PIXELS>>1; i++){
-				if (*p2){
-					*p2 = ((*p2)&0xF7DEF7DE)>>1;
-				}
-				p2++;
-			}
 		} else{
+			dupdate();
 			dclear(C_BLACK);
 			//for (i = 0; i < LCD_PIXELS>>1; i++){
 			//	*p2 = 0;
 			//	p2++;
 			//}
 		}
+		t2Dim = clock();
+		deltaTDim = (t2Dim-t1Dim) * SECS_PER_CLOCK * 0.01 + deltaTDim * 0.99;
+		
 		
 		if (gameState == gameEnd){
 			gameState = gameMenu;
@@ -766,7 +804,9 @@ int main(void) {
 			drawNumber(6,10,playerScore);
 		}
 		
-		drawNumber(6,58,deltaT*1000);
+		drawNumber(6,60,deltaT*10000);
+		drawNumber(6,80,deltaTDim*10000);
+		drawNumber(6,100,deltaTDisplay*10000);
 		
 		//drawNumber(6,80,CLOCKS_PER_SEC);
 		//drawNumber(6,100,((int) -1) >> 5);
@@ -786,7 +826,10 @@ int main(void) {
         //Print_OS("Press EXE to exit", 0, 0);
 		tick += 1;
         
-        dupdate();
+		t1Display = clock();
+        //dupdate();
+		t2Display = clock();
+		deltaTDisplay = (t2Display-t1Display) * SECS_PER_CLOCK * 0.01 + deltaTDisplay * 0.99;
 		
 		
 		
