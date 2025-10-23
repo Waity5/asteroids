@@ -389,32 +389,41 @@ int main(void) {
 		
 		if (trailType){
 			p2 = (unsigned int*) secondVRAM;
-			for (i = 0; i < DHEIGHT; i+=blockSize){
-				dma_transfer_async(1,DMA_32B,DWIDTH*2*blockSize/32, p + (i*DWIDTH), DMA_INC, secondVRAM + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
-				dma_transfer_wait(1);
-				r61524_display(secondVRAM,i,blockSize,R61524_DMA_WAIT);
-				
-				if (trailType == 2){
-					for (j = i; j < i+blockSize; j++){
-						pointer = secondVRAM + j*DWIDTH + ((tick+j)&1);
-						for (k = 0; k < DWIDTH>>1; k++){
-							*pointer = ((*pointer)&0xF7DE)>>1;
-							pointer += 2;
+			for (i = 0; i <= DHEIGHT; i+=blockSize){
+				if (i<DHEIGHT){
+					dma_transfer_async(1,DMA_32B,DWIDTH*2*blockSize/32, p + (i*DWIDTH), DMA_INC, secondVRAM + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
+				}
+				if (i){
+					if (trailType == 2){
+						for (j = i-blockSize; j < i; j++){
+							pointer = secondVRAM + j*DWIDTH + ((tick+j)&1);
+							for (k = 0; k < DWIDTH>>1; k++){
+								*pointer = ((*pointer)&0xF7DE)>>1;
+								pointer += 2;
+							}
+						}
+					} else {
+						for (j = 0; j < DWIDTH*blockSize/2; j++){
+							if (*p2){
+								*p2 = ((*p2)&0xF7DEF7DE)>>1;
+							}
+							p2++;
 						}
 					}
-				} else {
-					for (j = 0; j < DWIDTH*blockSize/2; j++){
-						if (*p2){
-							*p2 = ((*p2)&0xF7DEF7DE)>>1;
-						}
-						p2++;
-					}
+				}
+				if (i<DHEIGHT){
+					dma_transfer_wait(1);
 				}
 				
 				if (i){
+					dma_transfer_async(2,DMA_32B,DWIDTH*blockSize/16, secondVRAM + ((i-blockSize)*DWIDTH), DMA_INC, p + ((i-blockSize)*DWIDTH), DMA_INC, GINT_CALL_NULL);
+				}
+				if (i<DHEIGHT){
+					r61524_display(secondVRAM,i,blockSize,R61524_DMA_WAIT);
+				}
+				if (i){
 					dma_transfer_wait(2);
 				}
-				dma_transfer_async(2,DMA_32B,DWIDTH*blockSize/16, secondVRAM + (i*DWIDTH), DMA_INC, p + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
 			}
 			
 			
