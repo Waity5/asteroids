@@ -187,7 +187,7 @@ void deleteEntity(int index){
 	
 }
 
-void createObject(int32_t x, int32_t y, int32_t vx, int32_t vy, int32_t rot, int32_t vrot, const int32_t (*shape)[][2], unsigned char ID, int32_t timer){
+void createObject(int32_t x, int32_t y, int32_t vx, int32_t vy, int32_t rot, int32_t vrot, const int32_t (*shape)[][4], unsigned char ID, int32_t timer){
 	if (numEntities<maxEntities){
 		object* newObject;
 		newObject = malloc(sizeof(object));
@@ -221,11 +221,31 @@ void createObject(int32_t x, int32_t y, int32_t vx, int32_t vy, int32_t rot, int
 	}
 }
 
-void drawStaticShape(int32_t x, int32_t y, const int32_t (*shape)[][4], unsigned char length){
+void drawStaticShape(int32_t x, int32_t y, const int32_t (*shape)[][4]){
 	unsigned char i;
-	for (i = 0; i<length; i++){
+	for (i = 0; (*shape)[i][0] != endVal; i++){
 		drawLine(intToFP((*shape)[i][1]) + x, intToFP((*shape)[i][0]) + y, intToFP((*shape)[i][3]) + x, intToFP((*shape)[i][2]) + y);
 	}
+}
+
+unsigned char asteroidShapeCounter = 0;
+int32_t  (*getRandomAsteroidShape(void))[][4]{ // c syntax can be hard to guess at times
+	asteroidShapeCounter = (asteroidShapeCounter+1)%3;
+
+	switch (asteroidShapeCounter){
+		case 0:
+			return &asteroidShape1;
+			break;
+		case 1:
+			return &asteroidShape2;
+			break;
+		case 2:
+			return &asteroidShape3;
+			break;
+	}
+
+	return &asteroidShape0;
+	
 }
 
 void summonAsteroids(char count, int32_t meanSpeed){
@@ -249,7 +269,7 @@ void summonAsteroids(char count, int32_t meanSpeed){
 		}
 		rot = (intToFP(shortrand()) / shortrandMean)*3.14;
 		vrot = ((intToFP(shortrand()) / shortrandMean)-intToFP(1))*0.7;
-		createObject(x,y,vx,vy,rot,vrot,&largeAsteroidShape,largeAsteroidID,0);	
+		createObject(x,y,vx,vy,rot,vrot,getRandomAsteroidShape(),largeAsteroidID,0);	
 	}
 }
 
@@ -257,9 +277,9 @@ void drawText(int x, int y, char text[]){
 	unsigned int i;
 	for (i=0; i < strlen(text); i++){
 		if (text[i] >= 0x41 && text[i] <= 0x5A){
-			drawStaticShape(intToFP(x),intToFP(y),iconLets[text[i]-0x41],iconLetLengths[text[i]-0x41]);
+			drawStaticShape(intToFP(x),intToFP(y),iconLets[text[i]-0x41]);
 		} else if (text[i] >= 0x30 && text[i] <= 0x39){
-			drawStaticShape(intToFP(x),intToFP(y),iconNums[text[i]-0x30],iconNumLengths[text[i]-0x30]);
+			drawStaticShape(intToFP(x),intToFP(y),iconNums[text[i]-0x30]);
 		}
 		x += characterSpacing;
 	}
@@ -281,11 +301,13 @@ void drawNumber(int x, int y, int number){
 	}
 	while (i){
 		j = (number/i)%10;
-		drawStaticShape(intToFP(x),intToFP(y),iconNums[j],iconNumLengths[j]);
+		drawStaticShape(intToFP(x),intToFP(y),iconNums[j]);
 		x += characterSpacing;
 		i /= 10;
 	}
 }
+
+
 
 int main(void) {
 	p = gint_vram;
@@ -296,8 +318,7 @@ int main(void) {
 	int32_t sinCr;
 	int32_t cosCr;
 	int32_t x1, y1, x2, y2;
-	unsigned char length;
-	unsigned char trailType = 2  ;
+	unsigned char trailType = 3;
 	int32_t playerDeathTimer = 0;
 	object *entity;
 	object *entity2;
@@ -322,10 +343,10 @@ int main(void) {
 	const unsigned char smallAsteroidScore = 100;
 	const unsigned char mediumAsteroidScore = 50;
 	const unsigned char largeAsteroidScore = 20;
-	int32_t asteroidSpawnSpeed = intToFP(20);
+	int32_t asteroidSpawnSpeed = intToFP(30);
 	const int32_t asteroidSpawnSpeedIncrease = intToFP(2);
-	const int32_t asteroidSlipForwardMult = floatToFP(1.2);
-	const int32_t asteroidSlipSidewaysMult = floatToFP(1.5);
+	const int32_t asteroidSlipForwardMult = floatToFP(1.1);
+	const int32_t asteroidSlipSidewaysMult = floatToFP(1.3);
 	const int32_t asteroidSplitVRot = floatToFP(1.2);
 
 	const int32_t saucerCheckDelay = intToFP(4);
@@ -388,13 +409,32 @@ int main(void) {
 		//}
 		
 		if (trailType){
+			// this loop draws the vram to the screen, and dims the vram
+			// it does this quickly by
+			// 1 copying a block of vram to a place in on-chip memory
+			// 2 copying that to the screen
+			// 3 dimming the pixels
+			// 4 copying it back to vram
+			// steps 1 and 3 are done at the same time (same with 2 and 4), so it is (ideally) always copying to or from main ram
+			// 
+			// note that the on-chip memory isn't large enough for the entire framebuffer, and the loop abuses the fact that the memory loops
 			p2 = (unsigned int*) secondVRAM;
 			for (i = 0; i <= DHEIGHT; i+=blockSize){
 				if (i<DHEIGHT){
+					// start copy of new block from vram to on-chip memory
 					dma_transfer_async(1,DMA_32B,DWIDTH*2*blockSize/32, p + (i*DWIDTH), DMA_INC, secondVRAM + (i*DWIDTH), DMA_INC, GINT_CALL_NULL);
 				}
 				if (i){
-					if (trailType == 2){
+					// do the dimming on the block copied in the previous loop, while the new block is coppied in the background
+					if (trailType == 3){
+						for (j = i-blockSize; j < i; j++){
+							pointer = secondVRAM + j*DWIDTH + ((tick+j)%3);
+							for (k = 0; k < DWIDTH/3; k++){
+								*pointer = ((*pointer)&0xF7DE)>>1;
+								pointer += 3;
+							}
+						}
+					} else if (trailType == 2){
 						for (j = i-blockSize; j < i; j++){
 							pointer = secondVRAM + j*DWIDTH + ((tick+j)&1);
 							for (k = 0; k < DWIDTH>>1; k++){
@@ -412,16 +452,20 @@ int main(void) {
 					}
 				}
 				if (i<DHEIGHT){
+					// make sure copy is done
 					dma_transfer_wait(1);
 				}
 				
 				if (i){
+					// start copy of previous block from on-chip memory to vram
 					dma_transfer_async(2,DMA_32B,DWIDTH*blockSize/16, secondVRAM + ((i-blockSize)*DWIDTH), DMA_INC, p + ((i-blockSize)*DWIDTH), DMA_INC, GINT_CALL_NULL);
 				}
 				if (i<DHEIGHT){
+					// copy new block to display
 					r61524_display(secondVRAM,i,blockSize,R61524_DMA_WAIT);
 				}
 				if (i){
+					// make sure copy is done
 					dma_transfer_wait(2);
 				}
 			}
@@ -484,8 +528,11 @@ int main(void) {
 			gameState = gamePlay;
 		}
 		
-		if (keydownlast(72) && !keydownhold(72)){
-			trailType = (trailType+1)%3;
+		if (keydownlast(72)){
+			if (!keydownhold(72)){
+				trailType = (trailType+1)%4;
+			}
+			drawNumber(DWIDTH-6-1,10,trailType);
 		}
 		
 		if (playerScore/extraLifeInterval > playerScoreOld/extraLifeInterval){
@@ -581,8 +628,8 @@ int main(void) {
 		
 		for (i=numEntities-1; i>=0; i--){
 			entity = entities[i];
+
 			
-			length = lengths[entity->ID];
 			if (entity->ID == playerID){
 				if (keydownlast(76)){
 					entity->rot += FPMult(deltaTFP,playerRotSpeed);
@@ -604,6 +651,9 @@ int main(void) {
 				if (keydownlast(36)){
 					entity->vx += FPMult(cosCr,deltaTFP)*playerAccl;
 					entity->vy -= FPMult(sinCr,deltaTFP)*playerAccl;
+					entity->shape = &playerShapeBurning;
+				} else {
+					entity->shape = &playerShape;
 				}
 				x1 = fpsqrt(FPMult(entity->vx,entity->vx) + FPMult(entity->vy,entity->vy));
 				if (x1>0) {
@@ -704,15 +754,20 @@ int main(void) {
 				}
 			}
 			
-			
-			x1 = (*entity->shape)[length-1][0]*cosCr + (*entity->shape)[length-1][1]*sinCr + entity->x;
-			y1 = (*entity->shape)[length-1][1]*cosCr - (*entity->shape)[length-1][0]*sinCr + entity->y;
-			for (j = 0; j<length; j++){
-				x2 = (*entity->shape)[j][0]*cosCr + (*entity->shape)[j][1]*sinCr + entity->x;
-				y2 = (*entity->shape)[j][1]*cosCr - (*entity->shape)[j][0]*sinCr + entity->y;
+			if (entity->ID == mediumAsteroidID){
+				cosCr >>= 1;
+				sinCr >>= 1;
+			}
+			if (entity->ID == smallAsteroidID){
+				cosCr >>= 2;
+				sinCr >>= 2;
+			}
+			for (j = 0; (*entity->shape)[j][0] != endVal; j++){
+				x1 = (*entity->shape)[j][0]*cosCr + (*entity->shape)[j][1]*sinCr + entity->x;
+				y1 = (*entity->shape)[j][1]*cosCr - (*entity->shape)[j][0]*sinCr + entity->y;
+				x2 = (*entity->shape)[j][2]*cosCr + (*entity->shape)[j][3]*sinCr + entity->x;
+				y2 = (*entity->shape)[j][3]*cosCr - (*entity->shape)[j][2]*sinCr + entity->y;
 				drawLine(x1,y1,x2,y2);
-				x1 = x2;
-				y1 = y2;
 			}
 			
 			if (!entity->alive){
@@ -742,7 +797,7 @@ int main(void) {
 						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
 						entity->rot + floatToFP(0.5),
 						FPMult(entity->vrot, -asteroidSplitVRot),
-						&smallAsteroidShape,
+						getRandomAsteroidShape(),
 						smallAsteroidID,
 						0.0
 					);
@@ -755,7 +810,7 @@ int main(void) {
 						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
 						-entity->rot - floatToFP(1.7),
 						FPMult(entity->vrot, asteroidSplitVRot),
-						&smallAsteroidShape,
+						getRandomAsteroidShape(),
 						smallAsteroidID,
 						0.0
 					);
@@ -773,7 +828,7 @@ int main(void) {
 						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
 						entity->rot + floatToFP(1.5),
 						FPMult(entity->vrot, -asteroidSplitVRot),
-						&mediumAsteroidShape,
+						getRandomAsteroidShape(),
 						mediumAsteroidID,
 						0.0
 					);
@@ -786,7 +841,7 @@ int main(void) {
 						FPMult(entity->vy, cosCr) - FPMult(entity->vx, sinCr),
 						-entity->rot - floatToFP(0.4),
 						FPMult(entity->vrot, asteroidSplitVRot),
-						&mediumAsteroidShape,
+						getRandomAsteroidShape(),
 						mediumAsteroidID,
 						0.0
 					);
@@ -806,16 +861,16 @@ int main(void) {
 			}
 		}
 		for (i=0; i<playerLives; i++){
-			drawStaticShape(floatToFP(i*10+5.5),floatToFP(32.2),&iconPlayerShape,4);
+			drawStaticShape(floatToFP(i*10+5.5),floatToFP(32.2),&iconPlayerShape);
 		}
 		
 		if (gameState == gamePlay){
 			drawNumber(6,10,playerScore);
 		}
 		
-		drawNumber(6,60,deltaT*10000);
-		drawNumber(6,80,deltaTDim*10000);
-		drawNumber(6,100,deltaTDisplay*10000);
+		//drawNumber(6,60,deltaT*10000);
+		//drawNumber(6,80,deltaTDim*10000);
+		//drawNumber(6,100,deltaTDisplay*10000);
 		
 		//drawNumber(6,80,CLOCKS_PER_SEC);
 		//drawNumber(6,100,((int) -1) >> 5);
